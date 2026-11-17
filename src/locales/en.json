@@ -143,6 +143,8 @@
     "difficultyAdvanced": "Senior / Advanced",
     "resetView": "Reset view",
     "fullscreen": "Fullscreen",
+    "snapshot": "Capture 3D Snapshot",
+    "exportReport": "Export Lab Report",
     "orbitHint": "Drag or use arrow keys to orbit · scroll to zoom",
     "visited": "Visited",
     "mastered": "Mastered",

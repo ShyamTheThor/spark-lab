@@ -8,7 +8,12 @@ import { RoomEnvironment } from "three/examples/jsm/environments/RoomEnvironment
 export class Viewer {
   constructor(canvas) {
     this.canvas = canvas;
-    this.renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true });
+    this.renderer = new THREE.WebGLRenderer({
+      canvas,
+      antialias: true,
+      alpha: true,
+      preserveDrawingBuffer: true,
+    });
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
     this.renderer.toneMappingExposure = 1.15;
@@ -191,5 +196,16 @@ export class Viewer {
   render(scene) {
     if (!scene.environment) scene.environment = this.envMap;
     this.renderer.render(scene, this.camera);
+  }
+
+  takeSnapshot(scene) {
+    if (scene) {
+      this.render(scene);
+    }
+    try {
+      return this.canvas.toDataURL("image/png");
+    } catch {
+      return null;
+    }
   }
 }

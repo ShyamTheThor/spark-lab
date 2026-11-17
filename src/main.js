@@ -48,6 +48,13 @@ import { setOwner, saveItem, readState, subscribe as subscribeState } from "./fe
 import { escapeHtml } from "./lib/html.js";
 import { openAuthModal } from "./authModal.js";
 import { registerSW } from "virtual:pwa-register";
+import {
+  playShutterSound,
+  triggerShutterFlash,
+  openLabReportModal,
+  closeLabReportModal,
+  showSnapshotToast,
+} from "./features/labReport.js";
 
 // Theme & Accessibility preferences
 const THEME_KEY = "sparklab.theme";
@@ -1091,6 +1098,9 @@ function renderModuleObject(m) {
         <div class="stage-wrap">
           <span class="module-eyebrow" ${accentStyle}>${escapeHtml(m.tag)}</span>
           <div class="stage-tools">
+            <button class="stage-tool" id="snapshotBtn" type="button" data-i18n-title="experiments.snapshot" title="Capture 3D Snapshot">
+              <svg width="15" height="15" viewBox="0 0 16 16" fill="none" aria-hidden="true"><circle cx="8" cy="9" r="2.5" stroke="currentColor" stroke-width="1.6"/><path d="M2.5 5.5A1.5 1.5 0 0 1 4 4h1.5l1-1.5h3l1 1.5H12a1.5 1.5 0 0 1 1.5 1.5v6.5a1.5 1.5 0 0 1-1.5 1.5H4A1.5 1.5 0 0 1 2.5 12V5.5z" stroke="currentColor" stroke-width="1.6"/></svg>
+            </button>
             <button class="stage-tool" id="resetView" type="button" data-i18n-title="experiments.resetView">
               <svg width="15" height="15" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M13 8a5 5 0 1 1-1.46-3.54M13 3v3h-3" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
             </button>
@@ -1115,7 +1125,10 @@ function renderModuleObject(m) {
         <div class="quiz-slot notebook-block" id="quiz"></div>
         ${videoBlock(m)}
         <section id="module-curriculum" class="curriculum-detail"></section>
-        <button class="btn primary" id="mark-completed"></button>
+        <div class="notebook-action-row">
+          <button class="btn secondary" id="exportReportBtn" type="button" data-i18n="experiments.exportReport">📄 Export Lab Report</button>
+          <button class="btn primary" id="mark-completed"></button>
+        </div>
       </aside>
     </div>
     ${
@@ -1163,6 +1176,37 @@ function renderModuleObject(m) {
     e.target.textContent = t("experiments.completed");
   };
 
+  const handleSnapshot = () => {
+    playShutterSound();
+    triggerShutterFlash(stageWrap);
+    const dataUrl = viewer.takeSnapshot(m.scene);
+    showSnapshotToast({
+      stageWrap,
+      dataUrl,
+      module: m,
+      onOpenReport: () => handleExportReport(dataUrl),
+    });
+    return dataUrl;
+  };
+
+  const handleExportReport = (snapshotUrl) => {
+    playShutterSound();
+    triggerShutterFlash(stageWrap);
+    const snap = snapshotUrl || viewer.takeSnapshot(m.scene);
+    openLabReportModal({
+      module: m,
+      viewer,
+      panel,
+      currentUser,
+      quizScore: progress.for(m.id).quizScore,
+      completed: progress.for(m.id).completed,
+      snapshotUrl: snap,
+    });
+  };
+
+  main.querySelector("#snapshotBtn")?.addEventListener("click", handleSnapshot);
+  main.querySelector("#exportReportBtn")?.addEventListener("click", () => handleExportReport());
+
   const panel = main.querySelector("#panel");
   panel.innerHTML = m.panelHTML();
   m.wire(panel);
@@ -1178,6 +1222,7 @@ function renderModuleObject(m) {
   active = m;
   viewer.resize(stageWrap);
   featureCleanup = () => {
+    closeLabReportModal();
     document.removeEventListener("spark-language", syncModuleLanguage);
     quizCleanup?.();
     partnerCleanup();
@@ -1188,6 +1233,7 @@ function renderModuleObject(m) {
 
 /* ---------------- static pages & feature routing ---------------- */
 function leaveModule() {
+  closeLabReportModal();
   active?.onExit?.(viewer);
   active = null;
   if (viewer) viewer.onPick = null;
