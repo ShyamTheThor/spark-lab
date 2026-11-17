@@ -182,3 +182,4 @@ See [CURRICULUM_SETUP.md](CURRICULUM_SETUP.md) for setup, coverage, Bhashini int
    npm run dev
    ```
    *(If PowerShell restricts `npm.ps1`, run `npm.cmd ci` or switch the VS Code terminal profile to Command Prompt.)*
+munish
