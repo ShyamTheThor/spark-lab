@@ -1,3 +1,4 @@
+import {simulationState} from "../partner/state.js";
 import * as THREE from "three";
 
 const scene = new THREE.Scene();
@@ -37,6 +38,7 @@ function sideLen(scale) {
 const els = {};
 
 export default {
+  getExperimentState() { return simulationState(state); },
   id: "similarity",
   name: "Similar triangles",
   tag: "Math · Geometry",

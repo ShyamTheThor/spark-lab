@@ -1,3 +1,4 @@
+import {simulationState} from "../partner/state.js";
 import * as THREE from "three";
 
 const scene = new THREE.Scene();
@@ -65,6 +66,7 @@ layout();
 const els = {};
 
 export default {
+  getExperimentState() { return simulationState(state); },
   id: "unitcircle",
   name: "Unit circle",
   tag: "Math · Trigonometry",

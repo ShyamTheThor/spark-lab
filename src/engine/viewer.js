@@ -41,15 +41,35 @@ export class Viewer {
 
   _bindPointer() {
     const c = this.canvas;
+    const pointers = new Map();
+    let initialPinchDist = 0;
     c.addEventListener("contextmenu", (e) => e.preventDefault());
     c.addEventListener("pointerdown", (e) => {
-      this._pan = e.button === 2 || e.shiftKey;
-      this.dragging = true;
-      this._moved = 0;
-      this._last = { x: e.clientX, y: e.clientY };
-      c.setPointerCapture?.(e.pointerId);
+      pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+      if (pointers.size === 1) {
+        this._pan = e.button === 2 || e.shiftKey;
+        this.dragging = true;
+        this._moved = 0;
+        this._last = { x: e.clientX, y: e.clientY };
+        c.setPointerCapture?.(e.pointerId);
+      } else if (pointers.size === 2) {
+        const [p1, p2] = Array.from(pointers.values());
+        initialPinchDist = Math.hypot(p1.x - p2.x, p1.y - p2.y);
+      }
     });
     window.addEventListener("pointermove", (e) => {
+      if (!pointers.has(e.pointerId)) return;
+      pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+      if (pointers.size === 2) {
+        const [p1, p2] = Array.from(pointers.values());
+        const dist = Math.hypot(p1.x - p2.x, p1.y - p2.y);
+        if (initialPinchDist > 0 && Math.abs(dist - initialPinchDist) > 1) {
+          const delta = (initialPinchDist - dist) * 0.04;
+          this._zoom(delta);
+        }
+        initialPinchDist = dist;
+        return;
+      }
       if (!this.dragging) return;
       const dx = e.clientX - this._last.x;
       const dy = e.clientY - this._last.y;
@@ -65,16 +85,22 @@ export class Viewer {
       this.theta -= dx * 0.006;
       this.phi = Math.min(2.95, Math.max(0.25, this.phi - dy * 0.006));
     });
-    window.addEventListener("pointerup", (e) => {
-      if (!this.dragging) return;
-      this.dragging = false;
-      if (this._moved < 5 && this.onPick) {
-        const r = c.getBoundingClientRect();
-        const x = ((e.clientX - r.left) / r.width) * 2 - 1;
-        const y = -((e.clientY - r.top) / r.height) * 2 + 1;
-        this.onPick(x, y);
+    const handleUp = (e) => {
+      pointers.delete(e.pointerId);
+      if (pointers.size < 2) initialPinchDist = 0;
+      if (pointers.size === 0) {
+        if (!this.dragging) return;
+        this.dragging = false;
+        if (this._moved < 5 && this.onPick) {
+          const r = c.getBoundingClientRect();
+          const x = ((e.clientX - r.left) / r.width) * 2 - 1;
+          const y = -((e.clientY - r.top) / r.height) * 2 + 1;
+          this.onPick(x, y);
+        }
       }
-    });
+    };
+    window.addEventListener("pointerup", handleUp);
+    window.addEventListener("pointercancel", handleUp);
     c.addEventListener(
       "wheel",
       (e) => {
@@ -89,6 +115,11 @@ export class Viewer {
     // Keyboard orbit for people who can't drag.
     this.canvas.addEventListener("keydown", (e) => {
       const step = 0.12;
+      if(e.shiftKey && ['ArrowLeft','ArrowRight','ArrowUp','ArrowDown'].includes(e.key)) {
+        this.wantTarget.x += e.key==='ArrowLeft'?-.15:e.key==='ArrowRight'?.15:0;
+        this.wantTarget.y += e.key==='ArrowUp'?.15:e.key==='ArrowDown'?-.15:0;
+        e.preventDefault();return;
+      }
       const handled = {
         ArrowLeft: () => (this.theta += step),
         ArrowRight: () => (this.theta -= step),
@@ -145,9 +176,13 @@ export class Viewer {
   }
 
   resize(el) {
+    if (!el) return;
     const w = el.clientWidth;
     const h = el.clientHeight;
     if (w < 1 || h < 1) return;
+    if (this._lastW === w && this._lastH === h) return;
+    this._lastW = w;
+    this._lastH = h;
     this.renderer.setSize(w, h, false);
     this.camera.aspect = w / h;
     this.camera.updateProjectionMatrix();

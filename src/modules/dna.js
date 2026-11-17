@@ -1,3 +1,4 @@
+import {simulationState} from "../partner/state.js";
 import * as THREE from "three";
 import { sceneLights } from "../engine/helpers.js";
 const dnaIllustration = new URL("../assets/illustrations/dna.jpg", import.meta.url).href;
@@ -65,6 +66,7 @@ build();
 const els = {};
 
 export default {
+  getExperimentState() { return simulationState(state); },
   id: "dna",
   name: "DNA double helix",
   tag: "Biology · Genetics",

@@ -1,3 +1,4 @@
+import {simulationState} from "../partner/state.js";
 import * as THREE from "three";
 import { compile, isValidExpr } from "../lib/expr.js";
 
@@ -67,6 +68,7 @@ function numericDeriv() {
 }
 
 export default {
+  getExperimentState() { return simulationState(state); },
   id: "calculus",
   name: "Slope of a curve",
   tag: "Math · Calculus",

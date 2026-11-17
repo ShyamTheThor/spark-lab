@@ -1,3 +1,4 @@
+import {simulationState} from "../partner/state.js";
 import * as THREE from "three";
 import { sceneLights } from "../engine/helpers.js";
 import { createLabel } from "../engine/label.js";
@@ -91,6 +92,7 @@ function pulseSize() {
 buildHead(state.mode);
 
 export default {
+  getExperimentState() { return simulationState(state); },
   id: "stethoscope",
   name: "Stethoscope",
   tag: "Biology · Circulation",

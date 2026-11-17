@@ -1,3 +1,4 @@
+import {simulationState} from "../partner/state.js";
 import * as THREE from "three";
 import { sceneLights, glowSprite } from "../engine/helpers.js";
 import { createLabel } from "../engine/label.js";
@@ -148,6 +149,7 @@ const state = { crankSpeed: 0, isAC: true, theta: 0 };
 const els = {};
 
 export default {
+  getExperimentState() { return simulationState(state); },
   id: "electricgenerator",
   name: "Electric generator",
   tag: "Physics · Electromagnetism",

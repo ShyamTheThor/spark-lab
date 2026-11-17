@@ -1,6 +1,7 @@
+import {prefersReducedMotion} from "../partner/preferences.js";
 import * as THREE from "three";
 import { RoomEnvironment } from "three/examples/jsm/environments/RoomEnvironment.js";
-import { sceneLights, disposeScene, prefersReducedMotion } from "./helpers.js";
+import { sceneLights, disposeScene } from "./helpers.js";
 
 /**
  * A small decorative, always-live 3D scene for the home hero — an animated
@@ -86,7 +87,7 @@ export function createHeroOrbit(canvas) {
   let last = 0;
 
   function frame(t) {
-    const dt = Math.min(0.05, (t - last) / 1000 || 0);
+    const dt = prefersReducedMotion()?0:Math.min(0.05, (t - last) / 1000 || 0);
     last = t;
     group.rotation.y += dt * 0.22;
     electrons.forEach((e) => {
@@ -104,7 +105,7 @@ export function createHeroOrbit(canvas) {
       if (raf) return;
       resize();
       renderer.render(scene, camera);
-      if (prefersReducedMotion) return;
+      if (prefersReducedMotion()) return;
       last = performance.now();
       raf = requestAnimationFrame(frame);
     },

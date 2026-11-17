@@ -16,7 +16,7 @@ export default [
     },
   },
   {
-    files: ["scripts/**/*.mjs", "*.config.js"],
+    files: ["scripts/**/*.mjs", "server/**/*.mjs", "*.config.js"],
     languageOptions: {
       ecmaVersion: 2022,
       sourceType: "module",
@@ -26,7 +26,7 @@ export default [
   {
     files: ["test/**/*.js"],
     languageOptions: {
-      globals: { ...globals.node },
+      globals: { ...globals.node, ...globals.browser },
     },
   },
 ];

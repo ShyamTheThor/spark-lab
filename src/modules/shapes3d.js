@@ -1,3 +1,4 @@
+import {simulationState} from "../partner/state.js";
 import * as THREE from "three";
 import { sceneLights, contactShadow } from "../engine/helpers.js";
 
@@ -34,6 +35,7 @@ function applyShape(i) {
 }
 
 export default {
+  getExperimentState() { return simulationState(state); },
   id: "shapes3d",
   name: "3D shapes explorer",
   tag: "Math · Shapes",

@@ -1,3 +1,4 @@
+import {mountAccessibleScene} from "../partner/visuals.js";
 import { attachCurriculum } from "../curriculum/view.js";
 import { mountTranslation } from "../i18n/translation.js";
 import * as T from "three";
@@ -142,6 +143,7 @@ function detail(root, item) {
   const stage = createStage(root.querySelector("#instrument-stage"));
   if (!stage) return () => model.dispose();
   stage.scene.add(model.root);
+  const sceneCleanup=mountAccessibleScene(stage.scene,root.querySelector("#instrument-stage").parentElement);
   let separated = false;
   const select = (name) => {
     model.parts.forEach((p) => {
@@ -203,6 +205,7 @@ function detail(root, item) {
   document.addEventListener("spark-language", syncLabels);
   return () => {
     document.removeEventListener("spark-language", syncLabels);
+    sceneCleanup();
     stage.dispose();
     model.dispose();
     highlight.dispose();

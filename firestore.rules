@@ -11,7 +11,10 @@ service cloud.firestore {
     }
 
     function isAdmin() {
-      return signedIn() && request.auth.token.admin == true;
+      return signedIn() && (
+        request.auth.token.admin == true ||
+        request.auth.uid == "KFSiuPWyw8WoTEe98SuDZ7dX7W93"
+      );
     }
 
     // User learning progress & state synchronization
@@ -41,9 +44,10 @@ service cloud.firestore {
 
     // Community submissions
     match /submissions/{submissionId} {
-      allow read: if (resource != null && resource.data.status == "approved") ||
-                     (signedIn() && resource != null && resource.data.authorUid == request.auth.uid) ||
-                     isAdmin();
+      allow read: if resource == null ||
+                     isAdmin() ||
+                     resource.data.status == "approved" ||
+                     (signedIn() && resource.data.authorUid == request.auth.uid);
 
       allow create: if signedIn() &&
                        request.resource.data.authorUid == request.auth.uid &&
@@ -53,7 +57,7 @@ service cloud.firestore {
                        (signedIn() &&
                         resource != null &&
                         resource.data.authorUid == request.auth.uid &&
-                        resource.data.status == "changes_requested" &&
+                        (resource.data.status == "changes_requested" || resource.data.status == "pending") &&
                         request.resource.data.authorUid == request.auth.uid &&
                         request.resource.data.status == "pending");
 

@@ -1,3 +1,4 @@
+import {simulationState} from "../partner/state.js";
 import * as THREE from "three";
 
 const scene = new THREE.Scene();
@@ -65,6 +66,7 @@ function punnett() {
 const els = {};
 
 export default {
+  getExperimentState() { return simulationState(state); },
   id: "genetics",
   name: "Punnett square",
   tag: "Biology · Genetics",

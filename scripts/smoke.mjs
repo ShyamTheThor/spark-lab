@@ -1,3 +1,5 @@
+import {register} from 'node:module';
+register('./json-loader.mjs',import.meta.url);
 // Headless smoke test: construct every module, render its panel HTML, and run a
 // few animation frames with a stub viewer. Catches import errors, bad geometry
 // args, and throws in update() — everything short of real WebGL rendering.

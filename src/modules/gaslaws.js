@@ -1,3 +1,4 @@
+import {simulationState} from "../partner/state.js";
 import * as THREE from "three";
 import { sceneLights, contactShadow } from "../engine/helpers.js";
 
@@ -55,6 +56,7 @@ layout();
 const els = {};
 
 export default {
+  getExperimentState() { return simulationState(state); },
   id: "gaslaws",
   name: "Gas laws",
   tag: "Chemistry · Gases",

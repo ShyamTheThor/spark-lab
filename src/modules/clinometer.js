@@ -1,3 +1,4 @@
+import {simulationState} from "../partner/state.js";
 import * as THREE from "three";
 import { sceneLights } from "../engine/helpers.js";
 import { createLabel } from "../engine/label.js";
@@ -114,6 +115,7 @@ function refresh() {
 refresh();
 
 export default {
+  getExperimentState() { return simulationState(state); },
   id: "clinometer",
   name: "Clinometer",
   tag: "Math · Trigonometry",

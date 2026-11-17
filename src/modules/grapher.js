@@ -1,3 +1,4 @@
+import {simulationState} from "../partner/state.js";
 import * as THREE from "three";
 import { sceneLights } from "../engine/helpers.js";
 import { compile, isValidExpr } from "../lib/expr.js";
@@ -20,6 +21,7 @@ rebuild();
 const els = {};
 
 export default {
+  getExperimentState() { return simulationState(state); },
   id: "grapher",
   name: "Surface studio",
   tag: "Math · Functions",

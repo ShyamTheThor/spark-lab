@@ -1,3 +1,4 @@
+import {simulationState} from "../partner/state.js";
 import * as THREE from "three";
 import { sceneLights } from "../engine/helpers.js";
 
@@ -48,6 +49,7 @@ function collisionChance() {
 const els = {};
 
 export default {
+  getExperimentState() { return simulationState(state); },
   id: "reactionrate",
   name: "Reaction rate",
   tag: "Chemistry · Kinetics",

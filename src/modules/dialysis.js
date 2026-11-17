@@ -1,3 +1,4 @@
+import {simulationState} from "../partner/state.js";
 import * as THREE from "three";
 import { sceneLights } from "../engine/helpers.js";
 import { createLabel } from "../engine/label.js";
@@ -121,6 +122,7 @@ const tmpColorA = new THREE.Color();
 const tmpColorB = new THREE.Color();
 
 export default {
+  getExperimentState() { return simulationState(state); },
   id: "dialysis",
   name: "Dialysis machine",
   tag: "Biology · Excretion",

@@ -166,6 +166,11 @@ export default {
     { label: "Bright & hot", note: "Max voltage, low resistance: highest power here.", values: { "ci-v": 12, "ci-r": 1.5 } },
   ],
 
+  getExperimentState() {
+    return {status:'active',voltage_V:state.volts,resistance_ohm:state.ohms,...ohms({volts:state.volts,ohms:state.ohms}),units:{current:'A',power:'W'},formulas:['I = V / R','P = V * I'],visualMeaning:'Copper-coloured loop is wire; teal spheres represent moving charge; bulb glow represents power. No red/black polarity coding is used.'};
+  },
+  guidance:['Adjust voltage with the voltage slider. Adjust resistance with the resistance slider. Read current and power. Compare results after changing one input at a time.'],
+  safety:['This is a simulation. Do not connect real household mains electricity for this activity.'],
   panelHTML() {
     return `
       <div class="formula"><span>I = V / R</span><b class="mono" id="ci-i">—</b></div>
@@ -177,6 +182,7 @@ export default {
         <div><dt>Current</dt><dd class="mono" id="ci-i2">—</dd></div>
         <div><dt>Power</dt><dd class="mono" id="ci-p">—</dd></div>
       </dl>
+      <p class="fact">Copper-coloured wire: conducting loop. Teal spheres: charge markers. Bulb glow: electrical power, shown numerically above.</p>
       <p class="fact">The filament glows on <strong>power</strong> (P = V·I), not voltage alone.</p>
     `;
   },

@@ -1,3 +1,4 @@
+import {simulationState} from "../partner/state.js";
 import * as THREE from "three";
 import { sceneLights } from "../engine/helpers.js";
 import { thinLens } from "../lib/physics.js";
@@ -122,6 +123,7 @@ refresh();
 const els = {};
 
 export default {
+  getExperimentState() { return simulationState(state); },
   id: "lens",
   name: "Converging lens",
   tag: "Physics · Optics",

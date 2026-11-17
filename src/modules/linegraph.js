@@ -92,6 +92,8 @@ export default {
     { label: "Flat", note: "Slope 0 — a horizontal line at y = c.", values: { "lg-m": 0, "lg-c": 2 } },
   ],
 
+  getExperimentState(){return {status:'active',slope:state.m,intercept:state.c,formula:'y = mx + c',rise:state.m,run:1,points:[{x:0,y:state.c},{x:1,y:state.m+state.c},{x:2,y:2*state.m+state.c}]};},
+  guidance:['Adjust slope m and intercept c. The circular marker identifies the y-intercept. Compare the vertical rise with the horizontal run. Read the point values in Current simulation data.'],
   panelHTML() {
     return `
       <div class="formula"><span>y = mx + c</span><b class="mono" id="lg-eq">y = x</b></div>
@@ -99,7 +101,7 @@ export default {
         <input type="range" id="lg-m" min="-4" max="4" step="0.1" value="${state.m}"></div>
       <div class="control"><div class="row"><label for="lg-c">Intercept c</label><output id="lg-cval" for="lg-c"></output></div>
         <input type="range" id="lg-c" min="-4" max="4" step="0.1" value="${state.c}"></div>
-      <p class="fact">The orange triangle shows rise/run between x = 1 and x = 2.</p>
+      <p class="fact">The solid line is y = mx + c; the circle marks (0,c). The triangle shows vertical rise and horizontal run between x = 1 and x = 2. Accessible mode adds different dash lengths.</p>
     `;
   },
 

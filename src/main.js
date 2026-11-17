@@ -1,3 +1,8 @@
+import {mountLabPartner} from "./partner/panel.js";
+import {mountPartnerSettings} from "./partner/settings.js";
+import {savePartnerPrefs,prefersReducedMotion} from "./partner/preferences.js";
+import {mountAccessibleScene} from "./partner/visuals.js";
+import "./partner/partner.css";
 import "./style.css";
 import {
   mountLanguage,
@@ -23,7 +28,6 @@ import {
 import { getStudentPrefs, updateStudentPrefs } from "./curriculum/preferences.js";
 import { Viewer } from "./engine/viewer.js";
 import { createHeroOrbit } from "./engine/heroOrbit.js";
-import { prefersReducedMotion } from "./engine/helpers.js";
 import {
   MODULES,
   MODULE_IDS,
@@ -38,7 +42,7 @@ import { SUBJECT_ACCENT } from "./lib/subjectAccent.js";
 import { progress } from "./state.js";
 import { mountQuiz } from "./learn/quiz.js";
 import { mountPresets } from "./learn/presets.js";
-import { onAuth, signOutUser } from "./auth.js";
+import { onAuth, signOutUser, signInGoogle } from "./auth.js";
 import { isAdmin, refreshAdmin, firebaseConfigured } from "./firebase.js";
 import { setOwner, saveItem, readState, subscribe as subscribeState } from "./features/store.js";
 import { escapeHtml } from "./lib/html.js";
@@ -215,7 +219,13 @@ document.getElementById("global-search-form").addEventListener("submit", (e) => 
 function focusMainAndScrollTop() {
   main.focus({ preventScroll: true });
   window.scrollTo({ top: 0 });
-  requestAnimationFrame(() => requestAnimationFrame(() => window.scrollTo({ top: 0 })));
+  main.querySelector(".notebook")?.scrollTo({ top: 0 });
+  requestAnimationFrame(() =>
+    requestAnimationFrame(() => {
+      window.scrollTo({ top: 0 });
+      main.querySelector(".notebook")?.scrollTo({ top: 0 });
+    })
+  );
 }
 
 document.getElementById("resetProgress").addEventListener("click", () => {
@@ -272,6 +282,7 @@ textSizeBtn.addEventListener("click", () => {
   syncA11yButtons();
   try {
     localStorage.setItem(TEXT_SIZE_KEY, textSize);
+    savePartnerPrefs({textSize});
   } catch {
     /* ignore */
   }
@@ -283,6 +294,7 @@ contrastBtn.addEventListener("click", () => {
   syncA11yButtons();
   try {
     localStorage.setItem(CONTRAST_KEY, highContrast ? "high" : "normal");
+    savePartnerPrefs({highContrast});
   } catch {
     /* ignore */
   }
@@ -297,16 +309,40 @@ function initials(user) {
 function renderAuthArea() {
   const communityLink = `<a class="auth-link" href="#/community">${escapeHtml(t("auth.community"))}</a>`;
   if (!currentUser) {
-    authArea.innerHTML = `${communityLink}<button class="btn" id="signInBtn" type="button">${escapeHtml(t("auth.signIn"))}</button>`;
+    authArea.innerHTML = `
+      ${communityLink}
+      <button class="btn btn-google-nav" id="googleSignInBtn" type="button" title="Sign in with Google">
+        <svg class="google-icon" viewBox="0 0 24 24" width="16" height="16" aria-hidden="true">
+          <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
+          <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/>
+          <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z"/>
+          <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z"/>
+        </svg>
+        <span>Google</span>
+      </button>
+      <button class="btn" id="signInBtn" type="button">${escapeHtml(t("auth.signIn"))}</button>
+    `;
+    authArea.querySelector("#googleSignInBtn")?.addEventListener("click", async () => {
+      const result = await signInGoogle();
+      if (result.user) {
+        currentUser = result.user;
+        renderAuthArea();
+      } else if (result.error) {
+        requestSignIn();
+      }
+    });
     authArea.querySelector("#signInBtn").addEventListener("click", () => requestSignIn());
     return;
   }
   const admin = isAdmin(currentUser);
+  const avatarHTML = currentUser.photoURL
+    ? `<img class="auth-avatar-img" src="${escapeHtml(currentUser.photoURL)}" alt="${escapeHtml(currentUser.displayName || currentUser.email || "")}" referrerpolicy="no-referrer" />`
+    : `<span class="auth-avatar" title="${escapeHtml(currentUser.email || "")}">${escapeHtml(initials(currentUser))}</span>`;
   authArea.innerHTML = `
     ${communityLink}
     <a class="auth-link" href="#/submit">${escapeHtml(t("auth.submit"))}</a>
     ${admin ? `<a class="auth-link" href="#/review">${escapeHtml(t("auth.review"))}</a>` : ""}
-    <span class="auth-avatar" title="${escapeHtml(currentUser.email || "")}">${escapeHtml(initials(currentUser))}</span>
+    ${avatarHTML}
     <button class="btn" id="signOutBtn" type="button">${escapeHtml(t("auth.signOut"))}</button>
   `;
   authArea.querySelector("#signOutBtn").addEventListener("click", () => signOutUser());
@@ -405,7 +441,7 @@ function loop(t) {
   const dt = Math.max(0, Math.min(0.05, (t - lastT) / 1000));
   lastT = t;
   if (active && viewer) {
-    active.update(dt, viewer);
+    active.update(prefersReducedMotion() ? 0 : dt, viewer);
     viewer.updateCamera();
     viewer.resize(stageWrap);
     viewer.render(active.scene);
@@ -441,6 +477,33 @@ function moduleCard(m) {
     </a>`;
 }
 
+function cleanStepTitle(key, num) {
+  const text = t(key);
+  const stripped = text.replace(/^[\d০-৯٠-٩०-९१-९౦-౯೦-೯൦-൯௧-௯]+\s*[.:-]\s*/u, "");
+  return num ? `${num}. ${stripped}` : stripped;
+}
+
+function matchModuleToSubjectAndGrade(m, subj, grade) {
+  const [lo, hi] = m.grades || [1, 12];
+  if (grade < lo || grade > hi) return false;
+  if (!subj) return true;
+  if (subj === "Science") return ["Physics", "Chemistry", "Biology"].includes(m.subject);
+  if (subj === "Mathematics") return ["Math", "Mathematics"].includes(m.subject);
+  if (subj === "Environmental Studies") return ["Biology", "Chemistry", "Physics", "Math"].includes(m.subject);
+  if (subj === "Physics") return m.subject === "Physics";
+  if (subj === "Chemistry") return m.subject === "Chemistry";
+  if (subj === "Biology") return m.subject === "Biology";
+  return true;
+}
+
+function matchInstrumentToSubject(inst, subj) {
+  if (!subj) return true;
+  if (subj === "Science") return ["Physics", "Chemistry", "Biology"].includes(inst.subject);
+  if (subj === "Mathematics") return inst.subject === "Mathematics";
+  if (subj === "Environmental Studies") return true;
+  return inst.subject === subj;
+}
+
 async function renderHome() {
   active?.onExit?.(viewer);
   active = null;
@@ -452,7 +515,12 @@ async function renderHome() {
   }
   const data = cachedCurriculum;
 
+  let selectedTopicFilter = "";
+  let topicSearchQuery = "";
+  let isInitialMount = true;
+
   function paintHome() {
+    const scrollY = window.scrollY;
     const prefs = getStudentPrefs();
     const activeLang = getLanguage();
     const activeBoards = data.boards.filter((b) => b.enabled);
@@ -467,33 +535,69 @@ async function renderHome() {
       ? prefs.subject
       : allowedSubjects[0];
 
-    const chapters = filterMappings(data.mappings, {
+    // Chapters strictly belonging to the selected class, board, and subject
+    const classChapters = filterMappings(data.mappings, {
       board: selectedBoard,
       grade: selectedGrade,
       subject: selectedSubject,
     });
 
-    const recModuleIds = [...new Set(chapters.flatMap((c) => c.modules || []))];
-    const recModules = (
-      recModuleIds.length
-        ? recModuleIds.map((id) => getModule(id)).filter(Boolean)
-        : MODULES.filter((m) => {
-            const [lo, hi] = m.grades || [1, 12];
-            return selectedGrade >= lo && selectedGrade <= hi;
-          })
-    ).slice(0, 6);
+    if (
+      selectedTopicFilter &&
+      !classChapters.some(
+        (c) => c.id === selectedTopicFilter || c.topic === selectedTopicFilter
+      )
+    ) {
+      selectedTopicFilter = "";
+    }
 
-    const recInstIds = [...new Set(chapters.flatMap((c) => c.instruments || []))];
-    const recInstruments = (
-      recInstIds.length ? recInstIds.map((id) => findInstrument(id)).filter(Boolean) : INSTRUMENTS
-    ).slice(0, 4);
+    let displayedChapters = classChapters;
+    if (selectedTopicFilter) {
+      displayedChapters = displayedChapters.filter(
+        (c) => c.id === selectedTopicFilter || c.topic === selectedTopicFilter
+      );
+    }
+    if (topicSearchQuery.trim()) {
+      const q = topicSearchQuery.trim().toLowerCase();
+      displayedChapters = displayedChapters.filter(
+        (c) =>
+          c.chapter.toLowerCase().includes(q) ||
+          c.topic.toLowerCase().includes(q) ||
+          (c.objective && c.objective.toLowerCase().includes(q))
+      );
+    }
+
+    const topicModuleIds = [...new Set(displayedChapters.flatMap((c) => c.modules || []))];
+    const classModuleIds = [...new Set(classChapters.flatMap((c) => c.modules || []))];
+
+    let recModules = [];
+    if (selectedTopicFilter && topicModuleIds.length) {
+      recModules = topicModuleIds.map((id) => getModule(id)).filter(Boolean);
+    } else {
+      const mapped = classModuleIds
+        .map((id) => getModule(id))
+        .filter((m) => m && matchModuleToSubjectAndGrade(m, selectedSubject, selectedGrade));
+      const others = MODULES.filter(
+        (m) =>
+          !classModuleIds.includes(m.id) &&
+          matchModuleToSubjectAndGrade(m, selectedSubject, selectedGrade)
+      );
+      recModules = [...mapped, ...others].slice(0, 6);
+    }
+
+    const chapterInstIds = [...new Set(displayedChapters.flatMap((c) => c.instruments || []))];
+    const mappedInsts = chapterInstIds.map((id) => findInstrument(id)).filter(Boolean);
+    const otherInsts = INSTRUMENTS.filter(
+      (i) => !chapterInstIds.includes(i.id) && matchInstrumentToSubject(i, selectedSubject)
+    );
+    const recInstruments = (mappedInsts.length ? [...mappedInsts, ...otherInsts] : otherInsts).slice(0, 4);
 
     const s = progress.summary(MODULE_IDS);
     const recentIds = progress.recent(MODULE_IDS, 4);
     const pct = s.total ? Math.round((s.visited / s.total) * 100) : 0;
 
     main.innerHTML = `
-      <!-- 1. Welcome to Spark STEM -->
+      <!-- Welcome Hero -->
       <section class="hero-panel">
         <div class="hero hero-main">
           <span class="eyebrow">${escapeHtml(t("home.welcomeEyebrow"))}</span>
@@ -508,37 +612,195 @@ async function renderHome() {
         <aside class="hero-spot">
           <div class="hero-orbit-wrap"><canvas class="hero-orbit-canvas" aria-hidden="true"></canvas></div>
           <h2>${escapeHtml(t("home.guidedMode"))}</h2>
-          <p class="fact">${escapeHtml(tBoard(selectedBoard))} · ${escapeHtml(tClass(selectedGrade))} · ${escapeHtml(tSubject(selectedSubject))}</p>
-          <div class="btn-row">
+          <p class="fact">${escapeHtml(tClass(selectedGrade))} · ${escapeHtml(tSubject(selectedSubject))} · ${escapeHtml(tBoard(selectedBoard))}</p>
+          <p class="eyebrow" style="margin-top:6px; opacity:0.85">${formatNumber(classChapters.length)} ${escapeHtml(t("curriculum.topic"))} · ${formatNumber(recModules.length)} 3D Experiments</p>
+          <div class="btn-row" style="margin-top:12px">
             <a class="btn primary" href="#/dashboard">${escapeHtml(t("home.openDashboard"))}</a>
           </div>
         </aside>
       </section>
 
-      <!-- 2. Select your preferred language -->
-      <section class="home-step" id="step-language">
+      <!-- 1. Select your class (AT THE FIRST) -->
+      <section class="home-step" id="step-class">
         <div class="home-step-head">
-          <h2>${escapeHtml(t("home.stepLanguage"))}</h2>
-          <p>${escapeHtml(t("home.stepLanguageDesc"))}</p>
+          <div>
+            <h2>${escapeHtml(cleanStepTitle("home.stepClass", 1))}</h2>
+            <p>${escapeHtml(t("home.stepClassDesc"))}</p>
+          </div>
+          <span class="fact">✓ <strong>${escapeHtml(tClass(selectedGrade))}</strong> ${escapeHtml(t("curriculum.verified"))}</span>
         </div>
-        <div class="lang-grid">
-          ${Object.entries(languages)
-            .map(
-              ([code, label]) => `
-            <button type="button" class="choice-card" data-pick-lang="${code}" aria-pressed="${activeLang === code}">
-              <strong>${escapeHtml(label)}</strong>
-              <span>${code.toUpperCase()}</span>
-            </button>`
-            )
+        ${SCHOOL_STAGES.map(
+          (st) => `
+          <div class="class-stage-group">
+            <p class="class-stage-title">${escapeHtml(t(st.labelKey))}</p>
+            <div class="class-pills">
+              ${grades
+                .filter((g) => g >= st.min && g <= st.max)
+                .map(
+                  (g) =>
+                    `<button type="button" class="class-pill" data-pick-grade="${g}" aria-pressed="${selectedGrade === g}">${escapeHtml(tClass(g))}</button>`
+                )
+                .join("")}
+            </div>
+          </div>`
+        ).join("")}
+      </section>
+
+      <!-- 2. Select your subject -->
+      <section class="home-step" id="step-subject">
+        <div class="home-step-head">
+          <div>
+            <h2>${escapeHtml(cleanStepTitle("home.stepSubject", 2))}</h2>
+            <p>${escapeHtml(t("home.stepSubjectDesc"))} (${escapeHtml(tClass(selectedGrade))})</p>
+          </div>
+          <span class="fact"><strong>${escapeHtml(tSubject(selectedSubject))}</strong></span>
+        </div>
+        <div class="board-grid">
+          ${allowedSubjects
+            .map((subj) => {
+              const accent = SUBJECT_ACCENT[subj === "Mathematics" ? "Math" : subj] || "var(--teal)";
+              return `
+              <button type="button" class="choice-card" data-pick-subject="${escapeHtml(subj)}" aria-pressed="${selectedSubject === subj}" style="border-left:4px solid ${accent}">
+                <strong>${escapeHtml(tSubject(subj))}</strong>
+                <span>${escapeHtml(tClass(selectedGrade))}</span>
+              </button>`;
+            })
             .join("")}
         </div>
       </section>
 
-      <!-- 3. Select your education board -->
+      <!-- 3. Relevant Topics & Chapters for Class [selectedGrade] -->
+      <section class="home-step" id="step-chapters">
+        <div class="home-step-head">
+          <div>
+            <h2>${escapeHtml(cleanStepTitle("home.stepChapters", 3))}</h2>
+            <p>${escapeHtml(t("home.stepChaptersDesc"))} (${escapeHtml(tClass(selectedGrade))} · ${escapeHtml(tSubject(selectedSubject))} · ${escapeHtml(tBoard(selectedBoard))})</p>
+          </div>
+          <span class="fact"><strong>${formatNumber(displayedChapters.length)}</strong> / ${formatNumber(classChapters.length)} ${escapeHtml(t("curriculum.topic"))}</span>
+        </div>
+
+        <div class="topic-filter-toolbar">
+          <input
+            type="search"
+            class="topic-search-input"
+            id="topicSearchInput"
+            placeholder="🔍 Filter topics in ${escapeHtml(tClass(selectedGrade))} ${escapeHtml(tSubject(selectedSubject))}..."
+            value="${escapeHtml(topicSearchQuery)}"
+            aria-label="Filter topics in ${escapeHtml(tClass(selectedGrade))}"
+          />
+          <span class="topic-count-badge">${formatNumber(displayedChapters.length)} topics for ${escapeHtml(tClass(selectedGrade))}</span>
+        </div>
+
+        <div class="topic-filter-bar" role="toolbar" aria-label="Topics filter">
+          <button type="button" class="topic-pill" data-pick-topic="" aria-pressed="${!selectedTopicFilter}">
+            <strong>${escapeHtml(t("curriculum.all"))} (${formatNumber(classChapters.length)})</strong>
+          </button>
+          ${classChapters
+            .map((c) => {
+              const isPressed = selectedTopicFilter === c.id || selectedTopicFilter === c.topic;
+              return `
+                <button type="button" class="topic-pill" data-pick-topic="${escapeHtml(c.id)}" aria-pressed="${isPressed}" title="${escapeHtml(c.topic)}">
+                  <span>${escapeHtml(c.chapter)}</span>
+                </button>`;
+            })
+            .join("")}
+        </div>
+
+        <div class="chapter-list-compact">
+          ${
+            displayedChapters.length
+              ? displayedChapters
+                  .map(
+                    (c) => `
+                <article class="card topic-card">
+                  <div class="topic-card-head">
+                    <span class="tag">${escapeHtml(tClass(selectedGrade))} · ${escapeHtml(t("curriculum.chapterNum"))} ${formatNumber(c.chapterNumber || c.chapterOrder)}${c.textbookPart ? ` · ${escapeHtml(c.textbookPart)}` : ""}</span>
+                    ${c.modules?.length ? `<span class="badge is-visited">${formatNumber(c.modules.length)} 3D</span>` : ""}
+                  </div>
+                  <h3>${escapeHtml(c.chapter)}</h3>
+                  <p class="topic-desc"><strong>${escapeHtml(t("curriculum.topic"))}:</strong> ${escapeHtml(c.topic)}</p>
+                  ${c.objective ? `<p class="topic-objective">${escapeHtml(c.objective)}</p>` : ""}
+                  <div class="btn-row" style="margin-top:auto; padding-top:10px">
+                    <a class="btn primary" href="#/chapter/${escapeHtml(c.id)}">${escapeHtml(t("home.viewChapter"))} →</a>
+                  </div>
+                </article>`
+                  )
+                  .join("")
+              : `<p class="fact">${escapeHtml(t("curriculum.noResults"))}</p>`
+          }
+        </div>
+        <div class="btn-row" style="margin-top:14px">
+          <a class="btn" href="#/curriculum">${escapeHtml(t("home.openCurriculum"))} →</a>
+        </div>
+      </section>
+
+      <!-- 4. Recommended interactive experiments for Class [selectedGrade] -->
+      <section class="home-step" id="step-experiments">
+        <div class="home-step-head">
+          <div>
+            <h2>${escapeHtml(cleanStepTitle("home.stepExperiments", 4))}</h2>
+            <p>${escapeHtml(t("home.stepExperimentsDesc"))} (${escapeHtml(tClass(selectedGrade))} · ${escapeHtml(tSubject(selectedSubject))})</p>
+          </div>
+          <span class="fact"><strong>${formatNumber(recModules.length)}</strong> 3D Labs</span>
+        </div>
+        <div class="bench">
+          ${
+            recModules.length
+              ? recModules.map(moduleCard).join("")
+              : `<p class="fact">${escapeHtml(t("curriculum.noResults"))}</p>`
+          }
+        </div>
+        <div class="btn-row" style="margin-top:14px">
+          <a class="btn" href="#/lab">${escapeHtml(t("home.openLab"))} →</a>
+        </div>
+      </section>
+
+      <!-- 5. Scientific instruments for Class [selectedGrade] -->
+      <section class="home-step" id="step-instruments">
+        <div class="home-step-head">
+          <div>
+            <h2>${escapeHtml(cleanStepTitle("home.stepInstruments", 5))}</h2>
+            <p>${escapeHtml(t("home.stepInstrumentsDesc"))} (${escapeHtml(tSubject(selectedSubject))})</p>
+          </div>
+          <span class="fact"><strong>${formatNumber(recInstruments.length)}</strong> ${escapeHtml(t("instruments.interactive3d"))}</span>
+        </div>
+        <div class="bench">
+          ${recInstruments
+            .map(
+              (i) => `
+            <a class="card" href="#/instruments/${escapeHtml(i.id)}">
+              <span class="tag">${escapeHtml(tSubject(i.subject))} · ${escapeHtml(tClass(selectedGrade))}</span>
+              <h3>${escapeHtml(i.name)}</h3>
+              <p>${escapeHtml(i.applications)}</p>
+            </a>`
+            )
+            .join("")}
+        </div>
+        <div class="btn-row" style="margin-top:14px">
+          <a class="btn" href="#/instruments">${escapeHtml(t("home.openInstruments"))} →</a>
+        </div>
+      </section>
+
+      <!-- 6. Practice quizzes -->
+      <section class="home-step" id="step-quizzes">
+        <div class="home-step-head">
+          <h2>${escapeHtml(cleanStepTitle("home.stepQuizzes", 6))}</h2>
+          <p>${escapeHtml(t("home.stepQuizzesDesc"))} (${escapeHtml(tClass(selectedGrade))} · ${escapeHtml(tSubject(selectedSubject))})</p>
+        </div>
+        <div class="btn-row">
+          <a class="btn primary" href="#/quizzes">${escapeHtml(t("home.openQuizzes"))} →</a>
+          <a class="btn" href="#/formula">${escapeHtml(t("navigation.formula"))}</a>
+        </div>
+      </section>
+
+      <!-- 7. Select your education board -->
       <section class="home-step" id="step-board">
         <div class="home-step-head">
-          <h2>${escapeHtml(t("home.stepBoard"))}</h2>
-          <p>${escapeHtml(t("home.stepBoardDesc"))}</p>
+          <div>
+            <h2>${escapeHtml(cleanStepTitle("home.stepBoard", 7))}</h2>
+            <p>${escapeHtml(t("home.stepBoardDesc"))}</p>
+          </div>
+          <span class="fact"><strong>${escapeHtml(tBoard(selectedBoard))}</strong></span>
         </div>
         <div class="board-grid">
           ${activeBoards
@@ -562,128 +824,32 @@ async function renderHome() {
         </div>
       </section>
 
-      <!-- 4. Select your class -->
-      <section class="home-step" id="step-class">
+      <!-- 8. Select your preferred language -->
+      <section class="home-step" id="step-language">
         <div class="home-step-head">
-          <h2>${escapeHtml(t("home.stepClass"))}</h2>
-          <p>${escapeHtml(t("home.stepClassDesc"))}</p>
+          <div>
+            <h2>${escapeHtml(cleanStepTitle("home.stepLanguage", 8))}</h2>
+            <p>${escapeHtml(t("home.stepLanguageDesc"))}</p>
+          </div>
+          <span class="fact"><strong>${escapeHtml(languages[activeLang] || activeLang)}</strong></span>
         </div>
-        ${SCHOOL_STAGES.map(
-          (st) => `
-          <div class="class-stage-group">
-            <p class="class-stage-title">${escapeHtml(t(st.labelKey))}</p>
-            <div class="class-pills">
-              ${grades
-                .filter((g) => g >= st.min && g <= st.max)
-                .map(
-                  (g) =>
-                    `<button type="button" class="class-pill" data-pick-grade="${g}" aria-pressed="${selectedGrade === g}">${escapeHtml(tClass(g))}</button>`
-                )
-                .join("")}
-            </div>
-          </div>`
-        ).join("")}
-      </section>
-
-      <!-- 5. Select your subject -->
-      <section class="home-step" id="step-subject">
-        <div class="home-step-head">
-          <h2>${escapeHtml(t("home.stepSubject"))}</h2>
-          <p>${escapeHtml(t("home.stepSubjectDesc"))}</p>
-        </div>
-        <div class="board-grid">
-          ${allowedSubjects
-            .map((subj) => {
-              const accent = SUBJECT_ACCENT[subj === "Mathematics" ? "Math" : subj] || "var(--teal)";
-              return `
-              <button type="button" class="choice-card" data-pick-subject="${escapeHtml(subj)}" aria-pressed="${selectedSubject === subj}" style="border-left:4px solid ${accent}">
-                <strong>${escapeHtml(tSubject(subj))}</strong>
-                <span>${escapeHtml(tClass(selectedGrade))}</span>
-              </button>`;
-            })
-            .join("")}
-        </div>
-      </section>
-
-      <!-- 6. Explore your chapters -->
-      <section class="home-step" id="step-chapters">
-        <div class="home-step-head">
-          <h2>${escapeHtml(t("home.stepChapters"))}</h2>
-          <p>${escapeHtml(t("home.stepChaptersDesc"))} (${escapeHtml(tBoard(selectedBoard))} · ${escapeHtml(tClass(selectedGrade))} · ${escapeHtml(tSubject(selectedSubject))})</p>
-        </div>
-        <div class="chapter-list-compact">
-          ${
-            chapters.length
-              ? chapters
-                  .map(
-                    (c) => `
-                <a class="card" href="#/chapter/${escapeHtml(c.id)}">
-                  <span class="tag">${escapeHtml(t("curriculum.chapterNum"))} ${formatNumber(c.chapterNumber || c.chapterOrder)}${c.textbookPart ? ` · ${escapeHtml(c.textbookPart)}` : ""}</span>
-                  <h3>${escapeHtml(c.chapter)}</h3>
-                  <p>${escapeHtml(c.topic)}</p>
-                  <span class="fact">${c.modules?.length ? `${formatNumber(c.modules.length)} 3D · ${escapeHtml(t("home.viewChapter"))} →` : escapeHtml(t("curriculum.coverageNoExp"))}</span>
-                </a>`
-                  )
-                  .join("")
-              : `<p class="fact">${escapeHtml(t("curriculum.noResults"))}</p>`
-          }
-        </div>
-        <div class="btn-row" style="margin-top:14px">
-          <a class="btn" href="#/curriculum">${escapeHtml(t("home.openCurriculum"))} →</a>
-        </div>
-      </section>
-
-      <!-- 7. Recommended interactive experiments -->
-      <section class="home-step" id="step-experiments">
-        <div class="home-step-head">
-          <h2>${escapeHtml(t("home.stepExperiments"))}</h2>
-          <p>${escapeHtml(t("home.stepExperimentsDesc"))}</p>
-        </div>
-        <div class="bench">${recModules.map(moduleCard).join("")}</div>
-        <div class="btn-row" style="margin-top:14px">
-          <a class="btn" href="#/lab">${escapeHtml(t("home.openLab"))} →</a>
-        </div>
-      </section>
-
-      <!-- 8. Scientific instruments -->
-      <section class="home-step" id="step-instruments">
-        <div class="home-step-head">
-          <h2>${escapeHtml(t("home.stepInstruments"))}</h2>
-          <p>${escapeHtml(t("home.stepInstrumentsDesc"))}</p>
-        </div>
-        <div class="bench">
-          ${recInstruments
+        <div class="lang-grid">
+          ${Object.entries(languages)
             .map(
-              (i) => `
-            <a class="card" href="#/instruments/${escapeHtml(i.id)}">
-              <span class="tag">${escapeHtml(tSubject(i.subject))} · ${escapeHtml(t("instruments.interactive3d"))}</span>
-              <h3>${escapeHtml(i.name)}</h3>
-              <p>${escapeHtml(i.applications)}</p>
-            </a>`
+              ([code, label]) => `
+            <button type="button" class="choice-card" data-pick-lang="${code}" aria-pressed="${activeLang === code}">
+              <strong>${escapeHtml(label)}</strong>
+              <span>${code.toUpperCase()}</span>
+            </button>`
             )
             .join("")}
         </div>
-        <div class="btn-row" style="margin-top:14px">
-          <a class="btn" href="#/instruments">${escapeHtml(t("home.openInstruments"))} →</a>
-        </div>
       </section>
 
-      <!-- 9. Practice quizzes -->
-      <section class="home-step" id="step-quizzes">
-        <div class="home-step-head">
-          <h2>${escapeHtml(t("home.stepQuizzes"))}</h2>
-          <p>${escapeHtml(t("home.stepQuizzesDesc"))}</p>
-        </div>
-        <div class="btn-row">
-          <a class="btn primary" href="#/quizzes">${escapeHtml(t("home.openQuizzes"))} →</a>
-          <a class="btn" href="#/formula">${escapeHtml(t("navigation.formula"))}</a>
-        </div>
-      </section>
-
-      <!-- 10. Continue learning -->
+      <!-- 9. Continue learning -->
       <section class="home-step" id="step-continue">
         <div class="home-step-head">
-          <h2>${escapeHtml(t("home.stepContinue"))}</h2>
+          <h2>${escapeHtml(cleanStepTitle("home.stepContinue", 9))}</h2>
           <p>${escapeHtml(t("home.stepContinueDesc"))}</p>
         </div>
         ${
@@ -693,10 +859,10 @@ async function renderHome() {
         }
       </section>
 
-      <!-- 11. Learning progress -->
+      <!-- 10. Learning progress -->
       <section class="home-step" id="step-progress">
         <div class="home-step-head">
-          <h2>${escapeHtml(t("home.stepProgress"))}</h2>
+          <h2>${escapeHtml(cleanStepTitle("home.stepProgress", 10))}</h2>
           <p>${escapeHtml(t("home.stepProgressDesc"))}</p>
         </div>
         <div class="learning-stats">
@@ -720,38 +886,81 @@ async function renderHome() {
       }
     }
 
-    main.querySelector("#surpriseBtn").onclick = () => {
-      const pick = MODULES[Math.floor(Math.random() * MODULES.length)];
-      location.hash = `#/${pick.id}`;
-    };
+    const surpriseBtn = main.querySelector("#surpriseBtn");
+    if (surpriseBtn) {
+      surpriseBtn.onclick = () => {
+        const classMods = MODULES.filter((m) => {
+          const [lo, hi] = m.grades || [1, 12];
+          return selectedGrade >= lo && selectedGrade <= hi;
+        });
+        const pool = classMods.length ? classMods : MODULES;
+        const pick = pool[Math.floor(Math.random() * pool.length)];
+        location.hash = `#/${pick.id}`;
+      };
+    }
 
-    main.querySelectorAll("[data-pick-lang]").forEach((btn) => {
-      btn.onclick = () => setLanguage(btn.dataset.pickLang);
-    });
-    main.querySelectorAll("[data-pick-board]").forEach((btn) => {
+    const searchInput = main.querySelector("#topicSearchInput");
+    if (searchInput) {
+      searchInput.oninput = (e) => {
+        topicSearchQuery = e.target.value;
+        paintHome();
+        const nextInput = main.querySelector("#topicSearchInput");
+        if (nextInput) {
+          nextInput.focus();
+          nextInput.setSelectionRange(nextInput.value.length, nextInput.value.length);
+        }
+      };
+    }
+
+    main.querySelectorAll("[data-pick-topic]").forEach((btn) => {
       btn.onclick = () => {
-        updateStudentPrefs({ board: btn.dataset.pickBoard });
+        const tid = btn.dataset.pickTopic;
+        selectedTopicFilter = selectedTopicFilter === tid ? "" : tid;
         paintHome();
       };
     });
+
     main.querySelectorAll("[data-pick-grade]").forEach((btn) => {
       btn.onclick = () => {
         const g = Number(btn.dataset.pickGrade);
         const validSubj = subjectsForGrade(g);
         const nextSubj = validSubj.includes(selectedSubject) ? selectedSubject : validSubj[0];
+        selectedTopicFilter = "";
+        topicSearchQuery = "";
         updateStudentPrefs({ grade: g, subject: nextSubj });
         paintHome();
       };
     });
+
     main.querySelectorAll("[data-pick-subject]").forEach((btn) => {
       btn.onclick = () => {
+        selectedTopicFilter = "";
+        topicSearchQuery = "";
         updateStudentPrefs({ subject: btn.dataset.pickSubject });
         paintHome();
       };
     });
+
+    main.querySelectorAll("[data-pick-board]").forEach((btn) => {
+      btn.onclick = () => {
+        selectedTopicFilter = "";
+        topicSearchQuery = "";
+        updateStudentPrefs({ board: btn.dataset.pickBoard });
+        paintHome();
+      };
+    });
+
+    main.querySelectorAll("[data-pick-lang]").forEach((btn) => {
+      btn.onclick = () => setLanguage(btn.dataset.pickLang);
+    });
+
+    if (!isInitialMount && scrollY > 0) {
+      window.scrollTo({ top: scrollY });
+    }
   }
 
   paintHome();
+  isInitialMount = false;
   document.addEventListener("spark-language", paintHome);
   featureCleanup = () => document.removeEventListener("spark-language", paintHome);
   focusMainAndScrollTop();
@@ -805,6 +1014,7 @@ function videoBlock(m) {
 function illustrationHTML(m) {
   if (!m.illustration) return "";
   const { src, alt, caption } = m.illustration;
+  if(!Object.values(import.meta.glob("./assets/illustrations/*",{eager:true,query:"?url",import:"default"})).includes(src)) return `<p class="fact">${escapeHtml(alt)} — ${escapeHtml(caption)}</p>`;
   return `
     <figure class="stage-illustration">
       <img src="${src}" alt="${escapeHtml(alt)}" loading="lazy" width="1280" height="720">
@@ -861,6 +1071,9 @@ function renderModuleObject(m) {
       progress.complete(m.id);
       e.target.textContent = t("experiments.completed");
     };
+    const fallbackPanel=document.createElement("div");
+    main.querySelector("article").append(fallbackPanel);
+    featureCleanup=mountLabPartner({...m,getExperimentState:()=>({status:"3D unavailable; no live simulation values"})},fallbackPanel,main);
     return;
   }
 
@@ -953,6 +1166,8 @@ function renderModuleObject(m) {
   const panel = main.querySelector("#panel");
   panel.innerHTML = m.panelHTML();
   m.wire(panel);
+  const partnerCleanup = mountLabPartner(m,panel,main);
+  const sceneCleanup = mountAccessibleScene(m.scene,stageWrap);
 
   mountPresets(main.querySelector("#presets"), m.presets, panel);
   const quizCleanup = mountQuiz(main.querySelector("#quiz"), m.id, m.quiz);
@@ -965,6 +1180,8 @@ function renderModuleObject(m) {
   featureCleanup = () => {
     document.removeEventListener("spark-language", syncModuleLanguage);
     quizCleanup?.();
+    partnerCleanup();
+    sceneCleanup();
   };
   focusMainAndScrollTop();
 }
@@ -1121,6 +1338,9 @@ function updateActiveNav(section) {
       (nav === "" && !section) ||
       (nav && (section === nav || (nav === "curriculum" && section === "chapter")));
     a.classList.toggle("is-active", !!isActive);
+    if (isActive) {
+      a.scrollIntoView?.({ inline: "nearest", block: "nearest", behavior: "smooth" });
+    }
   });
 }
 
@@ -1158,4 +1378,11 @@ document.addEventListener("spark-language", () => {
 mountLanguage();
 window.addEventListener("hashchange", route);
 window.addEventListener("resize", () => viewer && stageWrap && viewer.resize(stageWrap));
+window.addEventListener("orientationchange", () => {
+  setTimeout(() => viewer && stageWrap && viewer.resize(stageWrap), 100);
+});
 route();
+
+// Shared settings use the existing account-scoped storage/cloud synchronization.
+document.addEventListener('spark-accessibility',e=>{textSize=e.detail.textSize;highContrast=e.detail.highContrast;syncA11yButtons();});
+mountPartnerSettings();

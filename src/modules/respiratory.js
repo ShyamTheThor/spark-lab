@@ -1,3 +1,4 @@
+import {simulationState} from "../partner/state.js";
 import * as THREE from "three";
 import { createLabel } from "../engine/label.js";
 import { radialGradientMaterial } from "../engine/helpers.js";
@@ -56,6 +57,7 @@ const state = { bpm: 15, running: true, t: 0 };
 const els = {};
 
 export default {
+  getExperimentState() { return simulationState(state); },
   id: "respiratory",
   name: "The respiratory system",
   tag: "Biology · Breathing",

@@ -1,3 +1,4 @@
+import {simulationState} from "../partner/state.js";
 import * as THREE from "three";
 import { sceneLights } from "../engine/helpers.js";
 
@@ -41,6 +42,7 @@ build();
 const els = {};
 
 export default {
+  getExperimentState() { return simulationState(state); },
   id: "foodchain",
   name: "Energy pyramid",
   tag: "Biology · Ecosystems",

@@ -1,3 +1,4 @@
+import {simulationState} from "../partner/state.js";
 import * as THREE from "three";
 import { sceneLights, prefersReducedMotion, contactShadow } from "../engine/helpers.js";
 
@@ -106,6 +107,7 @@ function controlsHTML() {
 }
 
 export default {
+  getExperimentState() { return simulationState(state); },
   id: "mensuration",
   name: "Volume & surface area",
   tag: "Math · Mensuration",

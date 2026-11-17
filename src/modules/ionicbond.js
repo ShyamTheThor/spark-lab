@@ -1,3 +1,4 @@
+import {simulationState} from "../partner/state.js";
 import * as THREE from "three";
 import { sceneLights, prefersReducedMotion } from "../engine/helpers.js";
 import { createLabel } from "../engine/label.js";
@@ -104,6 +105,7 @@ refreshGeometry();
 const els = {};
 
 export default {
+  getExperimentState() { return simulationState(state); },
   id: "ionicbond",
   name: "Ionic bonding",
   tag: "Chemistry · Bonding",

@@ -1,3 +1,4 @@
+import {simulationState} from "../partner/state.js";
 import * as THREE from "three";
 import { sceneLights } from "../engine/helpers.js";
 import { createLabel } from "../engine/label.js";
@@ -87,6 +88,7 @@ const state = { on: false, splitCommutator: true, theta: 0, omega: 0 };
 const els = {};
 
 export default {
+  getExperimentState() { return simulationState(state); },
   id: "electricmotor",
   name: "Electric motor",
   tag: "Physics · Electromagnetism",

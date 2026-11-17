@@ -120,7 +120,7 @@ export async function translateText(source, targetLang = getLanguage(), { allowN
   if (!source || targetLang === "en") return { text: source, status: "original" };
   const key = `${targetLang}\n${source}`;
 
-  let translated = await reviewed(targetLang, source);
+  let translated = allowNetwork ? await reviewed(targetLang, source) : null;
   if (translated) return { text: translated, status: "reviewed" };
 
   translated = await bundledTranslation(targetLang, source);

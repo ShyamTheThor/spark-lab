@@ -1,3 +1,4 @@
+import {simulationState} from "../partner/state.js";
 import * as THREE from "three";
 import { sceneLights } from "../engine/helpers.js";
 import { projectile as solveProjectile } from "../lib/physics.js";
@@ -94,6 +95,7 @@ drawPrediction();
 const els = {};
 
 export default {
+  getExperimentState() { return simulationState(state); },
   id: "projectile",
   name: "Projectile range",
   tag: "Physics · Kinematics",

@@ -17,7 +17,10 @@
     "format": "prettier --write .",
     "test:security": "firebase emulators:exec --only firestore --project demo-spark-enhanced \"node scripts/security-tests.mjs\"",
     "test:curriculum": "node --test scripts/curriculum-tests.mjs",
-    "translation:server": "node --env-file-if-exists=.env server/start.mjs"
+    "translation:server": "node --env-file-if-exists=.env server/start.mjs",
+    "api": "node --env-file-if-exists=.env server/start.mjs",
+    "test:partner": "node --test scripts/partner-tests.mjs",
+    "test:browser": "node scripts/partner-browser.mjs"
   },
   "dependencies": {
     "@codemirror/commands": "^6.11.1",
@@ -35,10 +38,15 @@
     "eslint": "^9.21.0",
     "firebase-tools": "^15.36.0",
     "globals": "^15.14.0",
+    "jsdom": "^31.0.1",
+    "playwright": "^1.65.1",
     "prettier": "^3.5.2",
     "sharp": "^0.33.2",
     "vite": "^5.1.4",
     "vite-plugin-pwa": "^0.19.0",
     "vitest": "^1.6.0"
+  },
+  "engines": {
+    "node": ">=22.0.0"
   }
 }

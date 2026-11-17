@@ -1,3 +1,4 @@
+import {simulationState} from "../partner/state.js";
 import * as THREE from "three";
 import { sceneLights } from "../engine/helpers.js";
 import { thinLens } from "../lib/physics.js";
@@ -113,6 +114,7 @@ refresh();
 const els = {};
 
 export default {
+  getExperimentState() { return simulationState(state); },
   id: "mirrors",
   name: "Concave & convex mirrors",
   tag: "Physics · Optics",

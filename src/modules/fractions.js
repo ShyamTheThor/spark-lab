@@ -1,3 +1,4 @@
+import {simulationState} from "../partner/state.js";
 import * as THREE from "three";
 
 const scene = new THREE.Scene();
@@ -61,6 +62,7 @@ function value(f) {
 }
 
 export default {
+  getExperimentState() { return simulationState(state); },
   id: "fractions",
   name: "Fraction wall",
   tag: "Math · Fractions",

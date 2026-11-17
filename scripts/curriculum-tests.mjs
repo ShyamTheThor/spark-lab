@@ -167,7 +167,7 @@ test("Bhashini config -> compute -> cached result, using simulated HTTP only", a
 test("keyless free translator works across all world & Indian languages without API keys; invalid target rejected", async () => {
   const translate = createTranslator({
     env: {},
-    fetcher: async (url) => ({
+    fetcher: async () => ({
       ok: true,
       json: async () => [[["Bonjour le monde", "Hello world"]]],
     }),

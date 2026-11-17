@@ -42,6 +42,12 @@ function phColor(ph) {
 }
 
 const state = { ph: 7 };
+const COLOR_NAMES=['red','orange','yellow-orange','yellow-green','green','green-teal','blue','indigo','violet'];
+function indicatorDescription(){
+  const nearest=STOPS.reduce((best,stop,i)=>Math.abs(stop[0]-state.ph)<Math.abs(STOPS[best][0]-state.ph)?i:best,0);
+  const meaning=state.ph<7?'Acidic':state.ph>7?'Basic':'Neutral';
+  return `${meaning} at the simulation's assumed 25 °C. Universal indicator: approximately ${COLOR_NAMES[nearest]} (interpolated model colour #${phColor(state.ph).getHexString()}). Colour identifies pH range, not acid strength or concentration by itself.`;
+}
 function apply() {
   liquid.material.color.copy(phColor(state.ph));
 }
@@ -83,12 +89,15 @@ export default {
     { label: "Drain cleaner (14)", note: "A powerful base — dangerously corrosive.", values: { "ph-val": 14 } },
   ],
 
+  getExperimentState(){return {status:'active',pH:state.ph,hydrogenIonConcentration_mol_L:10**(-state.ph),indicator:'universal indicator',interpretation:indicatorDescription(),formula:'[H+] ≈ 10^(-pH) mol/L for this ideal dilute-solution model'};},
+  guidance:['Adjust pH. Read the acidity classification, universal indicator colour and approximate hydrogen ion concentration. Each pH unit changes the concentration by a factor of ten.'],
+  safety:['Use only the virtual controls. Real acids and alkalis can be corrosive; practical work requires teacher supervision and appropriate protection.'],
   panelHTML() {
     return `
       <div class="formula"><span id="ph-label">Neutral</span><b class="mono" id="ph-num">7.0</b></div>
       <div class="control"><div class="row"><label for="ph-val">pH</label><output id="ph-valout" for="ph-val"></output></div>
         <input type="range" id="ph-val" min="0" max="14" step="0.1" value="${state.ph}"></div>
-      <p class="fact" id="ph-conc">—</p>
+      <p class="fact" id="ph-conc">—</p><p class="fact" id="ph-colour"></p>
     `;
   },
 
@@ -102,9 +111,10 @@ export default {
     const sync = () => {
       els.valout.textContent = state.ph.toFixed(1);
       els.num.textContent = state.ph.toFixed(1);
-      els.label.textContent = state.ph < 6.5 ? "Acidic" : state.ph > 7.5 ? "Basic" : "Neutral";
+      els.label.textContent = state.ph < 7 ? "Acidic" : state.ph > 7 ? "Basic" : "Neutral";
       const conc = Math.pow(10, -state.ph);
       els.conc.textContent = `[H⁺] ≈ ${conc.toExponential(1)} mol/L`;
+      root.querySelector("#ph-colour").textContent=indicatorDescription();
       apply();
     };
     els.val.addEventListener("input", () => ((state.ph = +els.val.value), sync()));

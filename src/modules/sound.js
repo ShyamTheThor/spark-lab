@@ -1,3 +1,4 @@
+import {simulationState} from "../partner/state.js";
 import * as THREE from "three";
 import { sceneLights } from "../engine/helpers.js";
 
@@ -61,6 +62,7 @@ function pitchLabel() {
 const els = {};
 
 export default {
+  getExperimentState() { return simulationState(state); },
   id: "sound",
   name: "Sound: pitch & loudness",
   tag: "Physics · Sound",

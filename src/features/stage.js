@@ -1,3 +1,4 @@
+import {prefersReducedMotion} from "../partner/preferences.js";
 import * as T from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 export function createStage(host, onFrame = () => {}) {
@@ -73,8 +74,11 @@ export function createStage(host, onFrame = () => {}) {
     const dt = Math.min((t - last) / 1000, 0.05);
     last = t;
     if (document.hidden) return;
-    onFrame(dt, t / 1000);
+    onFrame(prefersReducedMotion()?0:dt, t / 1000);
+    const autoRotate=controls.autoRotate;
+    if(prefersReducedMotion())controls.autoRotate=false;
     controls.update();
+    controls.autoRotate=autoRotate;
     renderer.render(scene, camera);
   };
   frame = requestAnimationFrame(animate);

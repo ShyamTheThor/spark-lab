@@ -1,5 +1,6 @@
 import { defineConfig, loadEnv } from "vite";
 import { createTranslationHandler } from "./server/bhashini.mjs";
+import { createAIHandler } from "./server/ai.mjs";
 import { VitePWA } from "vite-plugin-pwa";
 
 const base = process.env.DEPLOY_BASE || "./";
@@ -25,16 +26,18 @@ export default defineConfig(({mode}) => ({
   plugins: [
     { name: "spark-translation-server", configureServer(server) {
       const env={...loadEnv(mode, process.cwd(), "BHASHINI_"),...process.env};
+      server.middlewares.use(createAIHandler({env:{...loadEnv(mode, process.cwd(), ""),...process.env}}));
       server.middlewares.use(createTranslationHandler({env}));
     }, configurePreviewServer(server) {
       const env={...loadEnv(mode, process.cwd(), "BHASHINI_"),...process.env};
+      server.middlewares.use(createAIHandler({env:{...loadEnv(mode, process.cwd(), ""),...process.env}}));
       server.middlewares.use(createTranslationHandler({env}));
     } },
     VitePWA({
       registerType: "prompt",
       // Registration, update prompts and download status live in the app shell.
       injectRegister: false,
-      includeAssets: ["favicon.svg", "icons/apple-touch-icon.png"],
+      includeAssets: ["icons/icon-192.png", "icons/apple-touch-icon.png"],
       workbox: {
         // three.js bundles are large; make sure they are precached for offline use.
         maximumFileSizeToCacheInBytes: 4 * 1024 * 1024,

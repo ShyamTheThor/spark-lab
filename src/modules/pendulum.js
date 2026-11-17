@@ -134,9 +134,14 @@ export default {
     },
   ],
 
+  getExperimentState() {
+    const speed=state.L*state.omega;
+    return {status:state.running?'running':'paused',length_m:state.L,gravity_m_s2:state.g,startingAngle_deg:state.theta0,currentAngle_rad:state.theta,smallAnglePeriod_s:pendulumPeriod(state.L,state.g),kineticEnergyPerMass_J_kg:.5*speed*speed,potentialEnergyPerMass_J_kg:state.g*state.L*(1-Math.cos(state.theta)),formula:'T ≈ 2π√(L/g); small-angle approximation, not the measured nonlinear period',note:'Use Reset swing to apply the starting angle. Damping is included in the motion.'};
+  },
+  guidance:['Adjust rod length, gravity and starting angle. Press Reset swing to apply the starting angle. Use Play or Pause to control motion. Compare the small-angle period with the observed swing; large angles take longer. KE and PE show kinetic and potential energy.'],
   panelHTML() {
     return `
-      <div class="formula"><span>T = 2π√(L/g)</span><b class="mono" id="pd-period">—</b></div>
+      <div class="formula"><span>T ≈ 2π√(L/g) (small angles)</span><b class="mono" id="pd-period">—</b></div>
       <div class="control"><div class="row"><label for="pd-L">Rod length</label><output id="pd-Lval" for="pd-L"></output></div>
         <input type="range" id="pd-L" min="0.6" max="3.2" step="0.05" value="${state.L}"></div>
       <div class="control"><div class="row"><label for="pd-g">Gravity</label><output id="pd-gval" for="pd-g"></output></div>

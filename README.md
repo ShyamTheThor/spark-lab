@@ -1,3 +1,5 @@
+> **AI Lab Partner and accessibility update:** start with [IMPLEMENTATION_GUIDE.md](IMPLEMENTATION_GUIDE.md) for installation, API configuration, feature coverage, offline requirements and deployment. See [VALIDATION_AI_ACCESSIBILITY.md](VALIDATION_AI_ACCESSIBILITY.md) for test results and [CHANGED_FILES.md](CHANGED_FILES.md) for the implementation map. The original project documentation follows.
+
 # SparkLab
 
 **A free, interactive 3D science lab for classes I–XII.** The original 75 experiments are preserved, with an additional cabinet of 75 scientific instrument models. Explore

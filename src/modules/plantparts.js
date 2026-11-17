@@ -1,3 +1,4 @@
+import {simulationState} from "../partner/state.js";
 import * as THREE from "three";
 import { createLabel } from "../engine/label.js";
 import { radialGradientMaterial } from "../engine/helpers.js";
@@ -85,6 +86,7 @@ const state = { part: 0, t: 0 };
 const els = {};
 
 export default {
+  getExperimentState() { return simulationState(state); },
   id: "plantparts",
   name: "Parts of a plant",
   tag: "Biology · Plants",

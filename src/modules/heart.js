@@ -1,3 +1,4 @@
+import {simulationState} from "../partner/state.js";
 import * as THREE from "three";
 import { createLabel } from "../engine/label.js";
 import { radialGradientMaterial } from "../engine/helpers.js";
@@ -81,6 +82,7 @@ const state = { bpm: 72, t: 0 };
 const els = {};
 
 export default {
+  getExperimentState() { return simulationState(state); },
   id: "heart",
   name: "The heart",
   tag: "Biology · Circulation",

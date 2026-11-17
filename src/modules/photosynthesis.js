@@ -1,3 +1,4 @@
+import {simulationState} from "../partner/state.js";
 import * as THREE from "three";
 import { sceneLights, glowSprite } from "../engine/helpers.js";
 
@@ -72,6 +73,7 @@ function rate() {
 const els = {};
 
 export default {
+  getExperimentState() { return simulationState(state); },
   id: "photosynthesis",
   name: "Photosynthesis",
   tag: "Biology · Plants",

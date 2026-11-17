@@ -18,6 +18,9 @@ const FRIENDLY = {
   "auth/user-not-found": "No account found with that email.",
   "auth/too-many-requests": "Too many attempts — please wait a moment and try again.",
   "auth/popup-closed-by-user": "Sign-in was closed before finishing.",
+  "auth/popup-blocked": "Sign-in popup was blocked by your browser. Please allow popups for localhost.",
+  "auth/operation-not-allowed": "Google sign-in is not enabled in Firebase Console. Go to Firebase Console > Authentication > Sign-in method and enable Google.",
+  "auth/unauthorized-domain": "This domain is not authorized in Firebase. Add localhost to Firebase Console > Authentication > Settings > Authorized domains.",
   "auth/network-request-failed": "Network error — check your connection.",
 };
 

@@ -1,3 +1,4 @@
+import {simulationState} from "../partner/state.js";
 import * as THREE from "three";
 import { sceneLights } from "../engine/helpers.js";
 
@@ -46,6 +47,7 @@ placeSources();
 const els = {};
 
 export default {
+  getExperimentState() { return simulationState(state); },
   id: "waves",
   name: "Wave interference",
   tag: "Physics · Waves",

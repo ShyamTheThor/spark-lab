@@ -1,3 +1,4 @@
+import {simulationState} from "../partner/state.js";
 import * as THREE from "three";
 import { sceneLights, contactShadow } from "../engine/helpers.js";
 
@@ -99,6 +100,7 @@ function roll(times) {
 const els = {};
 
 export default {
+  getExperimentState() { return simulationState(state); },
   id: "dice",
   name: "Dice sums",
   tag: "Math · Probability",

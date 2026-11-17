@@ -1,3 +1,4 @@
+import {simulationState} from "../partner/state.js";
 import * as THREE from "three";
 import { sceneLights } from "../engine/helpers.js";
 import { ELEMENTS } from "../lib/elements.js";
@@ -99,6 +100,7 @@ function info() {
 }
 
 export default {
+  getExperimentState() { return simulationState(state); },
   id: "atom",
   name: "Atom builder",
   tag: "Chemistry · Atomic structure",

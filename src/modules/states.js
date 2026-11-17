@@ -1,3 +1,4 @@
+import {simulationState} from "../partner/state.js";
 import * as THREE from "three";
 import { sceneLights } from "../engine/helpers.js";
 
@@ -42,6 +43,7 @@ function stateName(T) {
 const els = {};
 
 export default {
+  getExperimentState() { return simulationState(state); },
   id: "states",
   name: "States of matter",
   tag: "Chemistry · Particles",
