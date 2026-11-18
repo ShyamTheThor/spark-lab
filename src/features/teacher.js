@@ -1,5 +1,5 @@
 import { escapeHtml as esc } from "../lib/html.js";
-import { MODULES } from "../modules/index.js";
+import { MODULES, loadModule } from "../modules/index.js";
 import { isAdmin, auth } from "../firebase.js";
 import { openAuthModal } from "../authModal.js";
 import { t } from "../i18n/config.js";
@@ -16,6 +16,13 @@ import {
   getDemoTeacherUser,
   enableDemoTeacherSession,
   clearDemoTeacherSession,
+  getLoginRole,
+  setLoginRole,
+  clearLoginRole,
+  loadLiveQuizSession,
+  saveLiveQuizSession,
+  createLiveQuizSession,
+  subscribeLiveQuizRoom,
 } from "./classroomStore.js";
 
 export const TEACHER_ACCESS_CODE = "SPARK-TEACHER-2026";
@@ -36,6 +43,7 @@ export function isTeacher(user) {
   if (isAdmin(user)) return true;
   const verifiedUid = localStorage.getItem(TEACHER_STORAGE_KEY);
   if (verifiedUid && verifiedUid === user.uid) return true;
+  if (getLoginRole() === "teacher") return true;
   const email = (user.email || "").toLowerCase();
   if (
     email.includes("teacher") ||
@@ -66,6 +74,7 @@ export function verifyTeacherCode(user, code) {
 export function revokeTeacherAccess() {
   localStorage.removeItem(TEACHER_STORAGE_KEY);
   clearDemoTeacherSession();
+  clearLoginRole();
 }
 
 /**
@@ -73,8 +82,9 @@ export function revokeTeacherAccess() {
  */
 export async function mount(root) {
   const user = auth?.currentUser || getDemoTeacherUser();
+  const role = getLoginRole();
 
-  if (!isTeacher(user)) {
+  if (!isTeacher(user) || role === "student") {
     return renderAccessGate(root, user);
   }
 
@@ -138,11 +148,12 @@ function renderAccessGate(root, user) {
   `;
 
     root.querySelector("#gateSignInBtn")?.addEventListener("click", () => {
-      openAuthModal(() => mount(root));
+      openAuthModal(() => mount(root), "teacher");
     });
 
     root.querySelector("#gateDemoTeacherBtn")?.addEventListener("click", () => {
       enableDemoTeacherSession();
+      setLoginRole("teacher");
       mount(root);
     });
 
@@ -321,6 +332,9 @@ function renderTeacherPortal(root, user) {
           <button class="teacher-tab ${activeTab === "analytics" ? "active" : ""}" data-tab="analytics" type="button">
             📊 ${esc(t("teacher.tabAnalytics"))}
           </button>
+          <button class="teacher-tab ${activeTab === "livequiz" ? "active" : ""}" data-tab="livequiz" type="button">
+            ⚡ Live Quiz Host
+          </button>
           <button class="teacher-tab ${activeTab === "demo" ? "active" : ""}" data-tab="demo" type="button">
             📽️ ${esc(t("teacher.tabDemo"))} (${MODULES.length})
           </button>
@@ -454,6 +468,47 @@ function renderTeacherPortal(root, user) {
       });
     });
 
+    // Live Quiz Host Console controls
+    root.querySelector("#createLiveQuizForm")?.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const modId = root.querySelector("#lqModule").value;
+      const timeSec = Number(root.querySelector("#lqTime").value) || 20;
+      const mod = await loadModule(modId);
+      const session = await createLiveQuizSession({
+        title: `${mod?.name || modId} Live Quiz`,
+        moduleId: modId,
+        subject: mod?.subject || "STEM",
+        questions: mod?.quiz || [],
+        timePerQuestion: timeSec,
+        hostName: teacherName,
+      });
+      showToast(`⚡ Live Quiz Room #${session.code} launched!`);
+    });
+    root.querySelector("#startLiveQuizBtn")?.addEventListener("click", () => {
+      const live = loadLiveQuizSession();
+      if (!live) return;
+      live.status = "active";
+      live.currentIndex = 0;
+      live.questionStartedAt = Date.now();
+      saveLiveQuizSession(live);
+      paint();
+    });
+    root.querySelector("#nextLiveQBtn")?.addEventListener("click", () => {
+      const live = loadLiveQuizSession();
+      if (!live) return;
+      live.currentIndex += 1;
+      live.questionStartedAt = Date.now();
+      saveLiveQuizSession(live);
+      paint();
+    });
+    root.querySelector("#endLiveQuizBtn")?.addEventListener("click", () => {
+      const live = loadLiveQuizSession();
+      if (!live) return;
+      live.status = "ended";
+      saveLiveQuizSession(live);
+      showToast("Live Quiz ended.");
+    });
+
     // Smartboard Demo search & filter
     root.querySelector("#demoSearchInput")?.addEventListener("input", (e) => {
       demoSearch = e.target.value;
@@ -472,15 +527,42 @@ function renderTeacherPortal(root, user) {
   const onClassroomUpdate = () => paint();
   addEventListener("online", onOnline);
   addEventListener("offline", paint);
+  const onLiveStorage = (e) => {
+    if (e.key === "sparklab.live.quiz.v1") paint();
+  };
+  addEventListener("storage", onLiveStorage);
   addEventListener("spark-classroom-update", onClassroomUpdate);
   document.addEventListener("spark-language", onClassroomUpdate);
 
+  let unsubLiveRoom = null;
+  let watchedRoomCode = null;
+  function ensureTeacherRoomSync() {
+    const live = loadLiveQuizSession();
+    const code = live && live.status !== "ended" ? String(live.code) : null;
+    if (code === watchedRoomCode) return;
+    unsubLiveRoom?.();
+    unsubLiveRoom = null;
+    watchedRoomCode = code;
+    if (code) {
+      unsubLiveRoom = subscribeLiveQuizRoom(code, () => paint());
+    }
+  }
+  const onClassroomAndSync = () => {
+    ensureTeacherRoomSync();
+    paint();
+  };
+  removeEventListener("spark-classroom-update", onClassroomUpdate);
+  addEventListener("spark-classroom-update", onClassroomAndSync);
+
+  ensureTeacherRoomSync();
   paint();
 
   return () => {
+    unsubLiveRoom?.();
     removeEventListener("online", onOnline);
     removeEventListener("offline", paint);
-    removeEventListener("spark-classroom-update", onClassroomUpdate);
+    removeEventListener("storage", onLiveStorage);
+    removeEventListener("spark-classroom-update", onClassroomAndSync);
     document.removeEventListener("spark-language", onClassroomUpdate);
   };
 }
@@ -495,6 +577,89 @@ function renderTabContent(tab, ctx) {
     demoSearch,
     demoSubject,
   } = ctx;
+
+  if (tab === "livequiz") {
+    const live = loadLiveQuizSession();
+    const participants = live ? Object.values(live.participants || {}).sort((a, b) => b.score - a.score) : [];
+    const currentQ = live && live.status === "active" ? live.questions[live.currentIndex] : null;
+
+    return `
+      <div class="tab-section">
+        <div class="tab-header-row" style="display:flex; justify-content:space-between; align-items:flex-end; flex-wrap:wrap; gap:12px;">
+          <div>
+            <h2>⚡ Real-Time Classroom Quiz Host</h2>
+            <p class="fact">Launch a live 6-digit quiz room. Students join from <strong>Practice &amp; Quizzes</strong> and compete on a real-time leaderboard.</p>
+          </div>
+        </div>
+
+        ${
+          !live || live.status === "ended"
+            ? `
+          <div class="analytics-card" style="max-width:540px; margin-top:14px;">
+            <h3>Create Live Quiz Room</h3>
+            <form id="createLiveQuizForm" class="modal-form" style="margin-top:10px;">
+              <div class="control">
+                <label for="lqModule">Select Experiment Question Bank</label>
+                <select id="lqModule" class="text-input">
+                  ${MODULES.map((m) => `<option value="${esc(m.id)}">${esc(m.name)} (${esc(m.subject)})</option>`).join("")}
+                </select>
+              </div>
+              <div class="control">
+                <label for="lqTime">Seconds per Question</label>
+                <select id="lqTime" class="text-input">
+                  <option value="15">15 seconds (Fast)</option>
+                  <option value="20" selected>20 seconds (Standard)</option>
+                  <option value="30">30 seconds (Relaxed)</option>
+                </select>
+              </div>
+              <button class="btn primary" type="submit" style="margin-top:8px;">🚀 Launch Live Quiz Room</button>
+            </form>
+          </div>`
+            : `
+          <div class="analytics-card" style="margin-top:14px;">
+            <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px;">
+              <div>
+                <span class="report-status-pill active">ROOM CODE: <strong style="font-size:1.1rem; letter-spacing:2px;">${esc(live.code)}</strong></span>
+                <h3 style="margin-top:6px;">${esc(live.title)} · Status: ${esc(live.status.toUpperCase())}</h3>
+                <p class="fact">${participants.length} student(s) connected · Question ${Math.min(live.currentIndex + 1, live.questions.length)} of ${live.questions.length}</p>
+              </div>
+              <div class="btn-row">
+                ${live.status === "lobby" ? `<button class="btn primary" id="startLiveQuizBtn" type="button">▶ Start Question 1</button>` : ""}
+                ${live.status === "active" && live.currentIndex + 1 < live.questions.length ? `<button class="btn primary" id="nextLiveQBtn" type="button">Next Question →</button>` : ""}
+                <button class="btn" id="endLiveQuizBtn" type="button">⏹ End Quiz</button>
+              </div>
+            </div>
+
+            ${
+              currentQ
+                ? `<div style="margin-top:14px; padding:12px; border-radius:10px; background:var(--surface-tint); border:1px solid var(--line);">
+                    <strong>Current Question:</strong> ${esc(currentQ.q)}
+                  </div>`
+                : ""
+            }
+
+            <h4 style="margin-top:16px;">Live Student Leaderboard</h4>
+            <div class="assignments-table-wrap" style="margin-top:8px;">
+              <table class="teacher-table">
+                <thead><tr><th>Rank</th><th>Student</th><th>Streak</th><th>Score</th></tr></thead>
+                <tbody>
+                  ${
+                    participants.length === 0
+                      ? `<tr><td colspan="4" style="text-align:center; padding:16px;">Waiting for students to join with code <b>${esc(live.code)}</b>…</td></tr>`
+                      : participants
+                          .map(
+                            (p, idx) => `<tr><td><b>#${idx + 1}</b></td><td>${esc(p.name)}</td><td>🔥 ${p.streak}x</td><td><code class="val-code">${p.score} pts</code></td></tr>`
+                          )
+                          .join("")
+                  }
+                </tbody>
+              </table>
+            </div>
+          </div>`
+        }
+      </div>
+    `;
+  }
 
   if (tab === "assignments") {
     return `

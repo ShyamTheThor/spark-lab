@@ -360,3 +360,257 @@ export function clearDemoTeacherSession() {
     localStorage.removeItem(DEMO_TEACHER_KEY);
   } catch {}
 }
+
+const ROLE_KEY = "sparklab.auth.role";
+
+export function getLoginRole() {
+  try {
+    return localStorage.getItem(ROLE_KEY) || null;
+  } catch {
+    return null;
+  }
+}
+
+export function setLoginRole(role) {
+  try {
+    if (role) localStorage.setItem(ROLE_KEY, role);
+    else localStorage.removeItem(ROLE_KEY);
+  } catch {}
+  dispatchEvent(new CustomEvent("spark-role-change", { detail: role || null }));
+}
+
+export function clearLoginRole() {
+  setLoginRole(null);
+}
+
+
+const LIVE_QUIZ_KEY = "sparklab.live.quiz.v1";
+
+function sanitizeForFirestore(obj) {
+  return JSON.parse(JSON.stringify(obj));
+}
+
+async function getLiveQuizFirestore() {
+  try {
+    const [{ firebaseConfigured }, { db }, fs] = await Promise.all([
+      import("../firebase.js"),
+      import("../db.js"),
+      import("firebase/firestore"),
+    ]);
+    if (!firebaseConfigured || !db || !navigator.onLine) return null;
+    return { db, ...fs };
+  } catch {
+    return null;
+  }
+}
+
+export function loadLiveQuizSession() {
+  return safeRead(LIVE_QUIZ_KEY, null);
+}
+
+export function saveLiveQuizSession(session, { syncCloud = true } = {}) {
+  if (!session) {
+    try {
+      localStorage.removeItem(LIVE_QUIZ_KEY);
+    } catch {}
+  } else {
+    safeWrite(LIVE_QUIZ_KEY, session);
+    if (syncCloud && session.code) {
+      getLiveQuizFirestore().then((fs) => {
+        if (!fs) return;
+        const clean = sanitizeForFirestore({ ...session, updatedAt: Date.now() });
+        fs.setDoc(fs.doc(fs.db, "liveQuizzes", String(session.code)), clean, { merge: true }).catch(
+          () => {}
+        );
+      });
+    }
+  }
+  dispatchEvent(new CustomEvent("spark-classroom-update"));
+}
+
+export function subscribeLiveQuizRoom(code, onUpdate) {
+  const cleanCode = String(code || "").trim();
+  if (!cleanCode) return () => {};
+  let unsubFirestore = null;
+  let cancelled = false;
+
+  getLiveQuizFirestore().then((fs) => {
+    if (!fs || cancelled) return;
+    unsubFirestore = fs.onSnapshot(
+      fs.doc(fs.db, "liveQuizzes", cleanCode),
+      (snap) => {
+        if (!snap.exists() || cancelled) return;
+        const remote = snap.data();
+        if (!remote?.code) return;
+        safeWrite(LIVE_QUIZ_KEY, remote);
+        dispatchEvent(new CustomEvent("spark-classroom-update"));
+        onUpdate?.(remote);
+      },
+      () => {}
+    );
+  });
+
+  return () => {
+    cancelled = true;
+    unsubFirestore?.();
+  };
+}
+
+export async function createLiveQuizSession({
+  title = "Live STEM Quiz",
+  moduleId = "",
+  subject = "STEM",
+  questions = [],
+  timePerQuestion = 20,
+  hostName = "Teacher",
+}) {
+  const code = String(Math.floor(100000 + Math.random() * 900000));
+  const session = {
+    code,
+    title,
+    moduleId,
+    subject,
+    hostName,
+    timePerQuestion,
+    status: "lobby", // 'lobby' | 'active' | 'ended'
+    currentIndex: 0,
+    questionStartedAt: null,
+    createdAt: Date.now(),
+    updatedAt: Date.now(),
+    questions: Array.isArray(questions) ? questions : [],
+    participants: {},
+  };
+  safeWrite(LIVE_QUIZ_KEY, session);
+  const fs = await getLiveQuizFirestore();
+  if (fs) {
+    try {
+      await fs.setDoc(fs.doc(fs.db, "liveQuizzes", code), sanitizeForFirestore(session));
+    } catch {}
+  }
+  dispatchEvent(new CustomEvent("spark-classroom-update"));
+  return session;
+}
+
+export async function joinLiveQuizParticipant(code, studentName) {
+  const cleanCode = String(code || "").trim();
+  if (!cleanCode) return null;
+
+  let session = null;
+  const fs = await getLiveQuizFirestore();
+  if (fs) {
+    try {
+      const snap = await fs.getDoc(fs.doc(fs.db, "liveQuizzes", cleanCode));
+      if (snap.exists()) {
+        session = snap.data();
+      }
+    } catch {}
+  }
+  if (!session) {
+    const local = loadLiveQuizSession();
+    if (local && String(local.code).trim() === cleanCode) {
+      session = local;
+    }
+  }
+  if (!session || session.status === "ended") return null;
+
+  const cleanName = (studentName || "Student").trim();
+  const existing = Object.values(session.participants || {}).find(
+    (p) => p.name.toLowerCase() === cleanName.toLowerCase()
+  );
+  if (existing) {
+    saveLiveQuizSession(session, { syncCloud: false });
+    return { session, participantId: existing.id };
+  }
+
+  const participantId = `STU-${Math.floor(1000 + Math.random() * 9000)}`;
+  const participantData = {
+    id: participantId,
+    name: cleanName,
+    score: 0,
+    streak: 0,
+    answers: {},
+    joinedAt: Date.now(),
+  };
+  session.participants = { ...(session.participants || {}), [participantId]: participantData };
+  session.updatedAt = Date.now();
+  safeWrite(LIVE_QUIZ_KEY, session);
+
+  if (fs) {
+    try {
+      await fs.setDoc(
+        fs.doc(fs.db, "liveQuizzes", cleanCode),
+        sanitizeForFirestore({
+          updatedAt: Date.now(),
+          participants: { [participantId]: participantData },
+        }),
+        { merge: true }
+      );
+    } catch {}
+  }
+  dispatchEvent(new CustomEvent("spark-classroom-update"));
+  return { session, participantId };
+}
+
+export async function submitLiveQuizAnswer(
+  participantId,
+  questionIndex,
+  choiceIndex,
+  isCorrect,
+  timeLeft = 10,
+  totalTime = 20,
+  roomCode = null
+) {
+  const cleanCode = String(roomCode || loadLiveQuizSession()?.code || "").trim();
+  const fs = await getLiveQuizFirestore();
+
+  let session = loadLiveQuizSession();
+  if (fs && cleanCode) {
+    try {
+      const snap = await fs.getDoc(fs.doc(fs.db, "liveQuizzes", cleanCode));
+      if (snap.exists()) session = snap.data();
+    } catch {}
+  }
+
+  if (!session || !session.participants?.[participantId]) return null;
+  const p = session.participants[participantId];
+  if (p.answers?.[questionIndex] !== undefined) return session;
+
+  let points = 0;
+  if (isCorrect) {
+    p.streak = (p.streak || 0) + 1;
+    const ratio = Math.max(0, Math.min(1, timeLeft / Math.max(1, totalTime)));
+    points = 500 + Math.round(ratio * 500) + p.streak * 50;
+    p.score = (p.score || 0) + points;
+  } else {
+    p.streak = 0;
+  }
+
+  p.answers = {
+    ...(p.answers || {}),
+    [questionIndex]: {
+      choiceIndex,
+      isCorrect: !!isCorrect,
+      points,
+      answeredAt: Date.now(),
+    },
+  };
+  session.updatedAt = Date.now();
+  safeWrite(LIVE_QUIZ_KEY, session);
+
+  if (fs && cleanCode) {
+    try {
+      await fs.setDoc(
+        fs.doc(fs.db, "liveQuizzes", cleanCode),
+        sanitizeForFirestore({
+          updatedAt: Date.now(),
+          participants: {
+            [participantId]: p,
+          },
+        }),
+        { merge: true }
+      );
+    } catch {}
+  }
+  dispatchEvent(new CustomEvent("spark-classroom-update"));
+  return session;
+}

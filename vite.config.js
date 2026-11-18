@@ -31,19 +31,31 @@ export default defineConfig(({mode}) => ({
     VitePWA({
       registerType: "prompt",
       injectRegister: false,
-      includeAssets: ["icons/icon-192.png", "icons/apple-touch-icon.png", "favicon.svg"],
+      devOptions: {
+        enabled: true,
+        type: "module",
+      },
+      includeAssets: [
+        "icons/icon-192.png",
+        "icons/icon-512.png",
+        "icons/maskable-512.png",
+        "icons/apple-touch-icon.png",
+        "favicon.svg",
+      ],
       workbox: {
-        maximumFileSizeToCacheInBytes: 5 * 1024 * 1024,
+        maximumFileSizeToCacheInBytes: 8 * 1024 * 1024,
         globPatterns: ["**/*.{js,css,html,svg,png,jpg,jpeg,woff2,glb,gltf,bin,json}"],
         navigateFallback: "index.html",
+        navigateFallbackDenylist: [/^\/api\//],
         cleanupOutdatedCaches: true,
+        clientsClaim: true,
         runtimeCaching: [
           {
             urlPattern: /^https:\/\/fonts\.googleapis\.com\//,
             handler: "StaleWhileRevalidate",
             options: {
               cacheName: "spark-font-styles",
-              expiration: { maxEntries: 8, maxAgeSeconds: 31536000 },
+              expiration: { maxEntries: 10, maxAgeSeconds: 31536000 },
             },
           },
           {
@@ -52,24 +64,27 @@ export default defineConfig(({mode}) => ({
             options: {
               cacheName: "spark-font-files",
               cacheableResponse: { statuses: [0, 200] },
-              expiration: { maxEntries: 20, maxAgeSeconds: 31536000 },
+              expiration: { maxEntries: 30, maxAgeSeconds: 31536000 },
             },
           },
         ],
       },
       manifest: {
+        id: "/",
         name: "SparkLab — Interactive 3D STEM Lab",
         short_name: "SparkLab",
         description:
-          "A free, interactive 3D science lab: physics, chemistry, biology and math you can touch — works 100% offline.",
-        theme_color: "#ffffff",
+          "Free interactive 3D STEM lab for Classes 1–12. Works 100% offline.",
+        theme_color: "#0f766e",
         background_color: "#ffffff",
         display: "standalone",
-        start_url: base,
-        scope: base,
+        orientation: "any",
+        start_url: "./index.html",
+        scope: "./",
+        categories: ["education", "science"],
         icons: [
-          { src: "icons/icon-192.png", sizes: "192x192", type: "image/png" },
-          { src: "icons/icon-512.png", sizes: "512x512", type: "image/png" },
+          { src: "icons/icon-192.png", sizes: "192x192", type: "image/png", purpose: "any" },
+          { src: "icons/icon-512.png", sizes: "512x512", type: "image/png", purpose: "any" },
           {
             src: "icons/maskable-512.png",
             sizes: "512x512",

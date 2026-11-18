@@ -42,11 +42,12 @@ import { SUBJECT_ACCENT } from "./lib/subjectAccent.js";
 import { progress } from "./state.js";
 import { mountQuiz } from "./learn/quiz.js";
 import { mountPresets } from "./learn/presets.js";
-import { onAuth, signOutUser, signInGoogle } from "./auth.js";
+import { onAuth, signOutUser, signInGoogle, syncUserRoleProfile } from "./auth.js";
 import { isAdmin, refreshAdmin, firebaseConfigured } from "./firebase.js";
 import { setOwner, saveItem, readState, subscribe as subscribeState } from "./features/store.js";
 import { escapeHtml } from "./lib/html.js";
-import { flushOfflineQueue, loadAssignments } from "./features/classroomStore.js";
+import { flushOfflineQueue, loadAssignments, getLoginRole, clearLoginRole, getDemoTeacherUser } from "./features/classroomStore.js";
+import { isTeacher, revokeTeacherAccess } from "./features/teacher.js";
 import { openAuthModal } from "./authModal.js";
 import { registerSW } from "virtual:pwa-register";
 import {
@@ -144,6 +145,7 @@ app.innerHTML = `
         <button class="theme-toggle" id="themeToggle" type="button"></button>
         <button class="a11y-btn" id="textSizeToggle" type="button" title="Text size">A+</button>
         <button class="a11y-btn" id="contrastToggle" type="button" aria-pressed="false" data-i18n="settings.highContrast">High contrast</button>
+        <button class="btn btn-sm download-app-btn" id="header-install-app" type="button" title="Install SparkLab for offline use">⬇ Download App</button>
       </div>
       <div class="auth-area" id="authArea"></div>
     </div>
@@ -157,7 +159,7 @@ app.innerHTML = `
     <a href="#/formula" data-nav="formula" data-i18n="navigation.formula">Formula Library</a>
     <a href="#/quizzes" data-nav="quizzes" data-i18n="navigation.quizzes">Practice & Quizzes</a>
     <a href="#/dashboard" data-nav="dashboard" data-i18n="navigation.dashboard">My Learning</a>
-    <a href="#/teacher" data-nav="teacher" id="teacher-nav-link" class="teacher-nav-link">Teacher Portal</a>
+    <a href="#/teacher" data-nav="teacher" id="teacher-nav-link" class="teacher-nav-link" hidden>Teacher Portal</a>
     <a href="#/curriculum-admin" data-nav="curriculum-admin" data-i18n="navigation.admin" id="curriculum-admin-link" hidden>Curriculum Admin</a>
   </nav>
   <div class="connection-bar" role="status" id="connection-status"></div>
@@ -198,26 +200,116 @@ addEventListener("spark-sync", (e) => {
 addEventListener("spark-storage-error", () => {
   document.getElementById("storage-alert").hidden = false;
 });
-if (navigator.serviceWorker)
+const isStandaloneApp = () =>
+  window.matchMedia("(display-mode: standalone)").matches ||
+  window.navigator.standalone === true;
+
+let installPrompt = null;
+
+function syncInstallButtons() {
+  const installed = isStandaloneApp();
+  const btns = [
+    document.getElementById("install-app"),
+    document.getElementById("header-install-app"),
+    document.getElementById("heroInstallBtn"),
+  ].filter(Boolean);
+
+  btns.forEach((btn) => {
+    if (installed) {
+      btn.hidden = true;
+    } else {
+      btn.hidden = false;
+      if (btn.id === "install-app") {
+        btn.textContent = `⬇ ${t("status.installSpark") || "Download App"}`;
+      }
+    }
+  });
+}
+
+function showManualInstallGuide() {
+  const existing = document.getElementById("pwa-install-modal");
+  if (existing) existing.remove();
+
+  const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
+  const modal = document.createElement("div");
+  modal.id = "pwa-install-modal";
+  modal.className = "pwa-modal-backdrop";
+  modal.innerHTML = `
+    <div class="pwa-modal-card" role="dialog" aria-modal="true" aria-labelledby="pwa-modal-title">
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;">
+        <h3 id="pwa-modal-title" style="margin:0;">⬇ Download SparkLab App</h3>
+        <button type="button" class="btn btn-sm" id="closePwaModal" aria-label="Close">✕</button>
+      </div>
+      <p style="margin:10px 0;">
+        Install SparkLab on your device to launch it like a native app and run all <strong>3D Science Labs, Quizzes, and Textbooks 100% offline</strong>.
+      </p>
+      <div class="pwa-install-steps">
+        ${
+          isIOS
+            ? `<p><strong>iPhone / iPad (Safari):</strong></p>
+               <ol>
+                 <li>Tap the <strong>Share</strong> button (square with upward arrow) at the bottom of Safari.</li>
+                 <li>Scroll down and tap <strong>Add to Home Screen</strong>.</li>
+                 <li>Tap <strong>Add</strong> in the top-right corner.</li>
+               </ol>`
+            : `<p><strong>Desktop (Chrome / Edge) or Android:</strong></p>
+               <ol>
+                 <li>Click the <strong>Install icon (⊕ / 🖥️)</strong> on the right side of your browser's address bar, <em>or</em> open the browser menu (<strong>⋮</strong>).</li>
+                 <li>Select <strong>Install SparkLab</strong> (or <strong>Add to Home screen</strong>).</li>
+                 <li>Once installed, turn off Wi-Fi/mobile data anytime — all 3D experiments will continue working offline.</li>
+               </ol>`
+        }
+      </div>
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-top:14px;gap:10px;">
+        <span class="fact">${offlineReady ? "✅ Offline cache ready" : "⏳ Caching offline assets…"}</span>
+        <button type="button" class="btn primary" id="okPwaModal">Got it</button>
+      </div>
+    </div>
+  `;
+  document.body.appendChild(modal);
+  const close = () => modal.remove();
+  modal.querySelector("#closePwaModal").onclick = close;
+  modal.querySelector("#okPwaModal").onclick = close;
+  modal.onclick = (e) => {
+    if (e.target === modal) close();
+  };
+}
+
+async function triggerAppDownload() {
+  if (installPrompt) {
+    await installPrompt.prompt();
+    const { outcome } = await installPrompt.userChoice;
+    if (outcome === "accepted") {
+      installPrompt = null;
+    }
+    syncInstallButtons();
+    return;
+  }
+  showManualInstallGuide();
+}
+
+window.addEventListener("beforeinstallprompt", (e) => {
+  e.preventDefault();
+  installPrompt = e;
+  syncInstallButtons();
+});
+
+window.addEventListener("appinstalled", () => {
+  installPrompt = null;
+  syncInstallButtons();
+});
+
+document.getElementById("install-app").onclick = triggerAppDownload;
+document.getElementById("header-install-app").onclick = triggerAppDownload;
+document.getElementById("update-app").onclick = () => updateSW(true);
+
+if (navigator.serviceWorker) {
   navigator.serviceWorker.ready.then(() => {
     offlineReady = true;
     updateConnection();
   });
-
-let installPrompt;
-addEventListener("beforeinstallprompt", (e) => {
-  e.preventDefault();
-  installPrompt = e;
-  document.getElementById("install-app").hidden = false;
-});
-document.getElementById("install-app").onclick = async () => {
-  if (installPrompt) {
-    await installPrompt.prompt();
-    installPrompt = null;
-    document.getElementById("install-app").hidden = true;
-  }
-};
-document.getElementById("update-app").onclick = () => updateSW(true);
+}
+syncInstallButtons();
 
 const main = document.getElementById("main");
 const crumbs = document.getElementById("crumbs");
@@ -319,9 +411,24 @@ function initials(user) {
   const src = user.displayName || user.email || "?";
   return src.trim().slice(0, 1).toUpperCase();
 }
+function isActiveTeacherSession() {
+  const activeUser = currentUser || getDemoTeacherUser();
+  const role = getLoginRole();
+  return isTeacher(activeUser) && role !== "student";
+}
+function syncTeacherNav() {
+  const teacherActive = isActiveTeacherSession();
+  const link = document.getElementById("teacher-nav-link");
+  if (link) link.hidden = !teacherActive;
+  const dashLink = document.querySelector('#primary-nav a[data-nav="dashboard"]');
+  if (dashLink) dashLink.hidden = teacherActive;
+}
 function renderAuthArea() {
+  syncTeacherNav();
+  const demoTeacher = !currentUser ? getDemoTeacherUser() : null;
+  const activeUser = currentUser || demoTeacher;
   const communityLink = `<a class="auth-link" href="#/community">${escapeHtml(t("auth.community"))}</a>`;
-  if (!currentUser) {
+  if (!activeUser) {
     authArea.innerHTML = `
       ${communityLink}
       <button class="btn btn-google-nav" id="googleSignInBtn" type="button" title="Sign in with Google">
@@ -335,35 +442,49 @@ function renderAuthArea() {
       </button>
       <button class="btn" id="signInBtn" type="button">${escapeHtml(t("auth.signIn"))}</button>
     `;
-    authArea.querySelector("#googleSignInBtn")?.addEventListener("click", async () => {
-      const result = await signInGoogle();
-      if (result.user) {
-        currentUser = result.user;
-        renderAuthArea();
-      } else if (result.error) {
-        requestSignIn();
-      }
+    authArea.querySelector("#googleSignInBtn")?.addEventListener("click", () => {
+      requestSignIn();
     });
     authArea.querySelector("#signInBtn").addEventListener("click", () => requestSignIn());
     return;
   }
-  const admin = isAdmin(currentUser);
-  const avatarHTML = currentUser.photoURL
-    ? `<img class="auth-avatar-img" src="${escapeHtml(currentUser.photoURL)}" alt="${escapeHtml(currentUser.displayName || currentUser.email || "")}" referrerpolicy="no-referrer" />`
-    : `<span class="auth-avatar" title="${escapeHtml(currentUser.email || "")}">${escapeHtml(initials(currentUser))}</span>`;
+  const admin = currentUser ? isAdmin(currentUser) : false;
+  const teacherActive = isActiveTeacherSession();
+  const rolePill = teacherActive ? '<span class="nav-role-pill is-teacher">🏫 Teacher</span>' : '<span class="nav-role-pill is-student">🎓 Student</span>';
+  const avatarHTML = activeUser.photoURL
+    ? `<img class="auth-avatar-img" src="${escapeHtml(activeUser.photoURL)}" alt="${escapeHtml(activeUser.displayName || activeUser.email || "")}" referrerpolicy="no-referrer" />`
+    : `<span class="auth-avatar" title="${escapeHtml(activeUser.email || "")}">${escapeHtml(initials(activeUser))}</span>`;
   authArea.innerHTML = `
     ${communityLink}
-    <a class="auth-link" href="#/submit">${escapeHtml(t("auth.submit"))}</a>
     ${admin ? `<a class="auth-link" href="#/review">${escapeHtml(t("auth.review"))}</a>` : ""}
+    ${rolePill}
     ${avatarHTML}
     <button class="btn" id="signOutBtn" type="button">${escapeHtml(t("auth.signOut"))}</button>
   `;
-  authArea.querySelector("#signOutBtn").addEventListener("click", () => signOutUser());
+  authArea.querySelector("#signOutBtn").addEventListener("click", () => {
+    revokeTeacherAccess();
+    clearLoginRole();
+    if (currentUser) signOutUser();
+    else renderAuthArea();
+    if (location.hash === "#/teacher") location.hash = "#/";
+  });
 }
+window.addEventListener("spark-role-change", () => {
+  renderAuthArea();
+  if (isActiveTeacherSession()) {
+    if (location.hash !== "#/teacher") location.hash = "#/teacher";
+    else route();
+  } else if (location.hash === "#/teacher") {
+    location.hash = "#/";
+  }
+});
 function requestSignIn(onSignedIn) {
   openAuthModal((user) => {
     currentUser = user;
     renderAuthArea();
+    if (isActiveTeacherSession() && location.hash !== "#/teacher") {
+      location.hash = "#/teacher";
+    }
     onSignedIn?.(user);
   });
 }
@@ -382,6 +503,16 @@ onAuth(async (user) => {
   currentUser = user;
   await refreshAdmin(user);
   if (authToken !== authGeneration) return;
+  if (user) {
+    const explicitRole = getLoginRole();
+    const remoteRole = await syncUserRoleProfile(user, explicitRole);
+    if (authToken !== authGeneration) return;
+    if (!explicitRole && (remoteRole === "teacher" || remoteRole === "student")) {
+      const { setLoginRole } = await import("./features/classroomStore.js");
+      if (authToken !== authGeneration) return;
+      setLoginRole(remoteRole);
+    }
+  }
   const preference = readState().preferences.theme?.value;
   if (THEME_ORDER.includes(preference)) {
     theme = preference;
@@ -621,6 +752,7 @@ async function renderHome() {
             <a class="btn primary" href="#/curriculum">${escapeHtml(t("home.openCurriculum"))} →</a>
             <a class="btn" href="#/lab">${escapeHtml(t("home.openLab"))}</a>
             <button class="btn" type="button" id="surpriseBtn">🎲 ${escapeHtml(t("home.surpriseMe"))}</button>
+            <button class="btn" type="button" id="heroInstallBtn">⬇ Download App (Offline)</button>
           </div>
         </div>
         <aside class="hero-spot">
@@ -862,32 +994,10 @@ async function renderHome() {
         </div>
       </section>
 
-      <!-- 8. Select your preferred language -->
-      <section class="home-step" id="step-language">
-        <div class="home-step-head">
-          <div>
-            <h2>${escapeHtml(cleanStepTitle("home.stepLanguage", 8))}</h2>
-            <p>${escapeHtml(t("home.stepLanguageDesc"))}</p>
-          </div>
-          <span class="fact"><strong>${escapeHtml(languages[activeLang] || activeLang)}</strong></span>
-        </div>
-        <div class="lang-grid">
-          ${Object.entries(languages)
-            .map(
-              ([code, label]) => `
-            <button type="button" class="choice-card" data-pick-lang="${code}" aria-pressed="${activeLang === code}">
-              <strong>${escapeHtml(label)}</strong>
-              <span>${code.toUpperCase()}</span>
-            </button>`
-            )
-            .join("")}
-        </div>
-      </section>
-
-      <!-- 9. Continue learning -->
+      <!-- 8. Continue learning -->
       <section class="home-step" id="step-continue">
         <div class="home-step-head">
-          <h2>${escapeHtml(cleanStepTitle("home.stepContinue", 9))}</h2>
+          <h2>${escapeHtml(cleanStepTitle("home.stepContinue", 8))}</h2>
           <p>${escapeHtml(t("home.stepContinueDesc"))}</p>
         </div>
         ${
@@ -897,10 +1007,10 @@ async function renderHome() {
         }
       </section>
 
-      <!-- 10. Learning progress -->
+      <!-- 9. Learning progress -->
       <section class="home-step" id="step-progress">
         <div class="home-step-head">
-          <h2>${escapeHtml(cleanStepTitle("home.stepProgress", 10))}</h2>
+          <h2>${escapeHtml(cleanStepTitle("home.stepProgress", 9))}</h2>
           <p>${escapeHtml(t("home.stepProgressDesc"))}</p>
         </div>
         <div class="learning-stats">
@@ -924,6 +1034,8 @@ async function renderHome() {
       }
     }
 
+    main.querySelector("#heroInstallBtn")?.addEventListener("click", triggerAppDownload);
+    syncInstallButtons();
     const surpriseBtn = main.querySelector("#surpriseBtn");
     if (surpriseBtn) {
       surpriseBtn.onclick = () => {
@@ -1433,6 +1545,7 @@ function route() {
   const [section, ...rest] = id.split("/");
   updateActiveNav(section);
   if (id === "submit/formula") renderSubmitPage();
+  else if (section === "dashboard" && isActiveTeacherSession()) location.hash = "#/teacher";
   else if (featureLoaders[section]) renderFeature(section, rest.join("/"));
   else if (id === "submit") renderSubmitPage();
   else if (id === "review") renderReviewPage();

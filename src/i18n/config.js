@@ -63,6 +63,9 @@ async function translateFreeChunk(text, targetLang) {
 async function buildDynamicDictionary(code) {
   const cached = readCachedDictionary(code);
   if (cached && cached.navigation?.home) return cached;
+  if (typeof navigator !== "undefined" && navigator.onLine === false) {
+    return BUNDLED_LOCALES[code] || en;
+  }
 
   const built = structuredClone(en);
   // Collect all UI strings (excluding "labels" technical keys if desired, or translate all groups)
@@ -181,6 +184,11 @@ export async function setLanguage(code, { persist = true } = {}) {
   if (!next) {
     // Check localStorage cache first for instant switch, otherwise fetch via keyless free API
     next = readCachedDictionary(code);
+    if (!next) {
+      if (typeof navigator !== "undefined" && navigator.onLine === false) {
+        next = BUNDLED_LOCALES[code] || en;
+      }
+    }
     if (!next) {
       // Apply cached/English immediately while fetching dynamic UI translation
       dictionary = en;

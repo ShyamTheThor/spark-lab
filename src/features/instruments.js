@@ -78,6 +78,146 @@ export function mount(root, id) {
   return () => document.removeEventListener("spark-language", paintList);
 }
 
+
+function mountInstrumentVoiceAssistant(container, item, selectComponent) {
+  const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+  const quickQuestions = [
+    `What is the working principle of ${item.name}?`,
+    `What are the main components?`,
+    `Where is ${item.name} used?`,
+  ];
+
+  container.innerHTML = `
+    <div class="instrument-voice-card" aria-label="Voice Lab Assistant">
+      <div class="voice-assistant-head">
+        <div>
+          <span class="eyebrow">🎙️ Voice Lab Assistant</span>
+          <h3>Ask about ${esc(item.name)}</h3>
+        </div>
+        <div class="btn-row">
+          <button class="btn btn-sm primary" type="button" id="va-mic-btn">🎤 Ask by Voice</button>
+          <button class="btn btn-sm" type="button" id="va-speak-btn" title="Read explanation aloud">🔊 Read Aloud</button>
+        </div>
+      </div>
+      <div class="chip-row">
+        ${quickQuestions
+          .map(
+            (q) =>
+              `<button type="button" class="chip" data-va-q="${esc(q)}">${esc(q)}</button>`
+          )
+          .join("")}
+      </div>
+      <form id="va-form" class="voice-ask-row">
+        <input type="text" id="va-input" class="text-input" placeholder="Ask about parts, principle, or applications…" aria-label="Ask Voice Lab Assistant" />
+        <button type="submit" class="btn">Ask</button>
+      </form>
+      <p class="voice-assistant-reply" id="va-reply" role="status">Tap <strong>🎤 Ask by Voice</strong> or click a quick question to explore ${esc(item.name)} hands-free (works offline).</p>
+    </div>
+  `;
+
+  const replyEl = container.querySelector("#va-reply");
+  const inputEl = container.querySelector("#va-input");
+  const micBtn = container.querySelector("#va-mic-btn");
+  const speakBtn = container.querySelector("#va-speak-btn");
+  let lastAnswer = `${item.name}. ${item.description} Working principle: ${item.principle}`;
+
+  function speakText(text) {
+    if (!("speechSynthesis" in window)) return;
+    try {
+      window.speechSynthesis.cancel();
+      const utter = new SpeechSynthesisUtterance(text);
+      utter.lang = document.documentElement.lang || "en-IN";
+      utter.rate = 1.0;
+      window.speechSynthesis.speak(utter);
+    } catch {
+      /* ignore speechSynthesis errors */
+    }
+  }
+
+  function answerQuery(rawQ, autoSpeak = true) {
+    const q = (rawQ || "").trim();
+    if (!q) return;
+    inputEl.value = q;
+    const lower = q.toLowerCase();
+
+    // Check if user mentioned a specific 3D component
+    const matchedPart = item.components.find((c) => lower.includes(c.toLowerCase()));
+    if (matchedPart) {
+      selectComponent?.(matchedPart);
+      lastAnswer = `Highlighted component: ${matchedPart}. ${item.name} uses ${matchedPart} as one of its ${item.components.length} key assemblies (${item.components.join(", ")}). ${item.principle}`;
+    } else if (lower.includes("part") || lower.includes("component") || lower.includes("structure")) {
+      if (item.components[0]) selectComponent?.(item.components[0]);
+      lastAnswer = `${item.name} consists of ${item.components.length} key components: ${item.components.join(", ")}. Tap any component button to highlight it in 3D.`;
+    } else if (lower.includes("principle") || lower.includes("work") || lower.includes("how")) {
+      lastAnswer = `Working Principle of ${item.name}: ${item.principle}`;
+    } else if (lower.includes("use") || lower.includes("application") || lower.includes("where")) {
+      lastAnswer = `Applications of ${item.name}: ${item.applications}`;
+    } else {
+      lastAnswer = `${item.name}: ${item.description} Principle: ${item.principle} Applications: ${item.applications}`;
+    }
+
+    replyEl.textContent = lastAnswer;
+    if (autoSpeak) speakText(lastAnswer);
+  }
+
+  container.querySelectorAll("[data-va-q]").forEach((btn) => {
+    btn.onclick = () => answerQuery(btn.dataset.vaQ, true);
+  });
+
+  container.querySelector("#va-form").onsubmit = (e) => {
+    e.preventDefault();
+    answerQuery(inputEl.value, true);
+  };
+
+  speakBtn.onclick = () => speakText(lastAnswer);
+
+  let recognition = null;
+  if (SpeechRecognition) {
+    recognition = new SpeechRecognition();
+    recognition.lang = document.documentElement.lang || "en-IN";
+    recognition.interimResults = false;
+    recognition.maxAlternatives = 1;
+
+    recognition.onstart = () => {
+      micBtn.textContent = "🛑 Listening…";
+      micBtn.setAttribute("aria-pressed", "true");
+    };
+    recognition.onresult = (event) => {
+      const transcript = event.results?.[0]?.[0]?.transcript || "";
+      if (transcript) answerQuery(transcript, true);
+    };
+    recognition.onerror = () => {
+      replyEl.textContent = "Voice capture unavailable or permission denied — type your question or tap a chip above (100% offline ready).";
+    };
+    recognition.onend = () => {
+      micBtn.textContent = "🎤 Ask by Voice";
+      micBtn.setAttribute("aria-pressed", "false");
+    };
+
+    micBtn.onclick = () => {
+      try {
+        recognition.start();
+      } catch {
+        recognition.stop();
+      }
+    };
+  } else {
+    micBtn.onclick = () => {
+      replyEl.textContent = "Browser speech recognition is unavailable offline here — use the quick-question chips or type below, then tap 🔊 Read Aloud.";
+      inputEl.focus();
+    };
+  }
+
+  return () => {
+    try {
+      recognition?.abort();
+      window.speechSynthesis?.cancel();
+    } catch {
+      /* ignore */
+    }
+  };
+}
+
 function detail(root, item) {
   progress.markVisited(item.id);
   root.innerHTML = `
@@ -133,9 +273,10 @@ function detail(root, item) {
     progress.complete(item.id);
     e.target.textContent = t("experiments.completed");
   };
+  const voiceBox = document.createElement("div");
   const extra = document.createElement("section");
   const translation = document.createElement("div");
-  root.querySelector("aside").append(translation, extra);
+  root.querySelector("aside").append(voiceBox, translation, extra);
   mountTranslation(translation, [item.description, item.principle, item.applications].join("\n"));
   attachCurriculum(extra, item.id, "instruments");
 
@@ -202,9 +343,11 @@ function detail(root, item) {
         );
     });
   };
+  const voiceCleanup = mountInstrumentVoiceAssistant(voiceBox, item, select);
   document.addEventListener("spark-language", syncLabels);
   return () => {
     document.removeEventListener("spark-language", syncLabels);
+    voiceCleanup();
     sceneCleanup();
     stage.dispose();
     model.dispose();

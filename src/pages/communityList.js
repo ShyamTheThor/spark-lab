@@ -21,8 +21,10 @@ export async function renderCommunityList(main) {
       <span class="eyebrow">Community instruments</span>
       <h1>Built by other learners.</h1>
       <p id="cl-count">Resources, formula visualizations, and developer simulations submitted by learners and
-      maintainer has approved. Want to add one? Head to
-      <a href="#/submit">Submit an instrument</a> — choose the no-code or developer path.</p>
+      maintainer has approved. Want to add one? Choose the no-code or developer path.</p>
+      <div class="btn-row" style="margin-top:14px;">
+        <a class="btn primary" href="#/submit">➕ Submit an Instrument</a>
+      </div>
     </section>
     <div class="filters" id="clFilters" hidden>
       <input type="search" id="cl-q" class="text-input search-input" placeholder="Search community instruments…" aria-label="Search community instruments">

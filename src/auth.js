@@ -7,7 +7,7 @@ import {
   signInWithPopup,
   updateProfile,
 } from "firebase/auth";
-import { auth, authReady } from "./firebase.js";
+import { auth, authReady, firebaseConfigured } from "./firebase.js";
 
 const FRIENDLY = {
   "auth/email-already-in-use": "That email already has an account — try signing in instead.",
@@ -26,6 +26,41 @@ const FRIENDLY = {
 
 function friendly(err) {
   return FRIENDLY[err?.code] || err?.message || "Something went wrong.";
+}
+
+export async function syncUserRoleProfile(user, explicitRole = null) {
+  if (!user?.uid || user.isDemo) return explicitRole || null;
+  if (!firebaseConfigured || !navigator.onLine) return explicitRole || null;
+  try {
+    const [{ db }, { doc, getDoc, setDoc, serverTimestamp }] = await Promise.all([
+      import("./db.js"),
+      import("firebase/firestore"),
+    ]);
+    if (!db) return explicitRole || null;
+    const ref = doc(db, "users", user.uid);
+    if (explicitRole === "teacher" || explicitRole === "student") {
+      await setDoc(
+        ref,
+        {
+          uid: user.uid,
+          email: user.email || "",
+          displayName: user.displayName || "",
+          role: explicitRole,
+          updatedAt: serverTimestamp(),
+        },
+        { merge: true }
+      );
+      return explicitRole;
+    }
+    const snap = await getDoc(ref);
+    if (snap.exists()) {
+      const role = snap.data()?.role;
+      if (role === "teacher" || role === "student") return role;
+    }
+  } catch {
+    /* ignore network/rules errors when offline */
+  }
+  return explicitRole || null;
 }
 
 export async function signUp(name, email, password) {
