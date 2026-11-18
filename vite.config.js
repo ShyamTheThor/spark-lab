@@ -12,11 +12,6 @@ export default defineConfig(({mode}) => ({
     chunkSizeWarningLimit: 900,
     rollupOptions: {
       output: {
-        // three.js is the single biggest dependency and never changes between
-        // our own deploys (same pinned version) — splitting it into its own
-        // chunk means a returning visitor's browser can reuse its cached copy
-        // across deploys, only re-downloading the (much smaller) app-code
-        // chunk that actually changed. Safe, mechanical, no behavior change.
         manualChunks(id) {
           if (id.includes("node_modules/three")) return "three";
         },
@@ -35,13 +30,12 @@ export default defineConfig(({mode}) => ({
     } },
     VitePWA({
       registerType: "prompt",
-      // Registration, update prompts and download status live in the app shell.
       injectRegister: false,
-      includeAssets: ["icons/icon-192.png", "icons/apple-touch-icon.png"],
+      includeAssets: ["icons/icon-192.png", "icons/apple-touch-icon.png", "favicon.svg"],
       workbox: {
-        // three.js bundles are large; make sure they are precached for offline use.
-        maximumFileSizeToCacheInBytes: 4 * 1024 * 1024,
-        globPatterns: ["**/*.{js,css,html,svg,png,jpg,jpeg,woff2,glb,gltf,bin}"],
+        maximumFileSizeToCacheInBytes: 5 * 1024 * 1024,
+        globPatterns: ["**/*.{js,css,html,svg,png,jpg,jpeg,woff2,glb,gltf,bin,json}"],
+        navigateFallback: "index.html",
         cleanupOutdatedCaches: true,
         runtimeCaching: [
           {
@@ -64,10 +58,10 @@ export default defineConfig(({mode}) => ({
         ],
       },
       manifest: {
-        name: "SparkLab — Science Lab",
+        name: "SparkLab — Interactive 3D STEM Lab",
         short_name: "SparkLab",
         description:
-          "A free, interactive 3D science lab: physics, chemistry, biology and math you can touch.",
+          "A free, interactive 3D science lab: physics, chemistry, biology and math you can touch — works 100% offline.",
         theme_color: "#ffffff",
         background_color: "#ffffff",
         display: "standalone",

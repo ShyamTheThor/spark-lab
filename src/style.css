@@ -3202,3 +3202,338 @@ html[data-theme="dark"][data-contrast="high"] {
   font-weight: 700;
   margin: 4px 0 0 0;
 }
+
+
+/* ---------------- Hackathon Polish: Offline Status, Teacher Analytics & Student Gamification ---------------- */
+.connection-bar.is-offline {
+  background: color-mix(in srgb, #f59e0b 16%, var(--surface));
+  color: var(--ink);
+  border-bottom: 1px solid color-mix(in srgb, #f59e0b 45%, var(--line));
+  font-weight: 600;
+}
+.connection-bar.is-online {
+  color: var(--ink-muted);
+}
+
+.offline-status-pill {
+  font-size: 0.74rem;
+  font-weight: 700;
+  padding: 3px 10px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+}
+.offline-status-pill.is-online {
+  background: color-mix(in srgb, #10b981 14%, var(--surface));
+  color: #047857;
+  border-color: color-mix(in srgb, #10b981 35%, var(--line));
+}
+.offline-status-pill.is-offline {
+  background: color-mix(in srgb, #f59e0b 18%, var(--surface));
+  color: #b45309;
+  border-color: color-mix(in srgb, #f59e0b 45%, var(--line));
+}
+
+.teacher-toast {
+  padding: 10px 14px;
+  border-radius: 10px;
+  background: color-mix(in srgb, #10b981 14%, var(--surface));
+  border: 1px solid color-mix(in srgb, #10b981 40%, var(--line));
+  color: var(--ink);
+  font-size: 0.88rem;
+  font-weight: 600;
+}
+
+.report-submit-banner {
+  margin: 0 20px 12px;
+  padding: 12px 16px;
+  border-radius: 10px;
+  background: color-mix(in srgb, #10b981 14%, var(--surface));
+  border: 1px solid color-mix(in srgb, #10b981 40%, var(--line));
+  color: var(--ink);
+  font-size: 0.9rem;
+}
+
+.mastery-bars {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.mastery-bar-row {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.mastery-bar-label {
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.86rem;
+}
+.mastery-track {
+  width: 100%;
+  height: 10px;
+  border-radius: 999px;
+  background: var(--surface-tint);
+  overflow: hidden;
+  border: 1px solid var(--line);
+}
+.mastery-fill {
+  height: 100%;
+  border-radius: 999px;
+  transition: width 0.4s ease;
+}
+.mastery-fill.good {
+  background: linear-gradient(90deg, #10b981, #059669);
+}
+.mastery-fill.warn {
+  background: linear-gradient(90deg, #f59e0b, #d97706);
+}
+.mastery-fill.low {
+  background: linear-gradient(90deg, #ef4444, #dc2626);
+}
+
+/* Student Gamification & Engagement */
+.student-hero-glow {
+  background: linear-gradient(135deg, color-mix(in srgb, var(--teal) 10%, var(--surface)), color-mix(in srgb, var(--brass) 10%, var(--surface)));
+  border: 1px solid var(--line-strong);
+}
+.student-hero-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 20px;
+  flex-wrap: wrap;
+}
+.xp-rank-card {
+  min-width: 220px;
+  background: var(--surface);
+  border: 1px solid var(--line-strong);
+  border-radius: 14px;
+  padding: 14px 16px;
+  box-shadow: var(--shadow);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.xp-level-badge {
+  font-size: 0.76rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--teal-strong, var(--teal));
+}
+.xp-total {
+  font-size: 1.45rem;
+  font-weight: 800;
+  color: var(--ink);
+}
+.xp-bar-track {
+  width: 100%;
+  height: 8px;
+  border-radius: 999px;
+  background: var(--surface-tint);
+  overflow: hidden;
+}
+.xp-bar-fill {
+  height: 100%;
+  border-radius: 999px;
+  background: linear-gradient(90deg, var(--teal), var(--brass-strong));
+  transition: width 0.5s ease;
+}
+
+.achievements-strip {
+  margin: 18px 0;
+}
+.badges-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(185px, 1fr));
+  gap: 12px;
+  margin-top: 10px;
+}
+.achievement-badge {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 14px;
+  border-radius: 12px;
+  border: 1px solid var(--line);
+  background: var(--surface);
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+.achievement-badge.unlocked {
+  border-color: color-mix(in srgb, var(--teal) 45%, var(--line));
+  background: color-mix(in srgb, var(--teal) 7%, var(--surface));
+}
+.achievement-badge.unlocked:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--shadow);
+}
+.achievement-badge.locked {
+  opacity: 0.55;
+  filter: grayscale(0.8);
+}
+.badge-emoji {
+  font-size: 1.5rem;
+  line-height: 1;
+}
+.achievement-badge strong {
+  display: block;
+  font-size: 0.88rem;
+}
+.achievement-badge span {
+  display: block;
+  font-size: 0.75rem;
+  color: var(--ink-muted);
+}
+
+.student-engage-strip {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 14px;
+  margin: 18px 0 24px;
+}
+.engage-card {
+  border-radius: 14px;
+  padding: 18px 20px;
+  border: 1px solid var(--line-strong);
+  background: var(--surface);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  transition: transform 0.18s ease, box-shadow 0.18s ease;
+}
+.engage-card:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--shadow);
+}
+.engage-spark {
+  background: linear-gradient(135deg, color-mix(in srgb, var(--teal) 10%, var(--surface)), var(--surface));
+}
+.engage-assign {
+  background: linear-gradient(135deg, color-mix(in srgb, var(--brass) 10%, var(--surface)), var(--surface));
+}
+.engage-pill {
+  align-self: flex-start;
+  font-size: 0.72rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  padding: 3px 9px;
+  border-radius: 999px;
+  background: var(--surface-tint);
+  border: 1px solid var(--line);
+}
+.engage-card h3 {
+  margin: 2px 0 0;
+  font-size: 1.08rem;
+}
+.engage-card p {
+  margin: 0 0 6px;
+  font-size: 0.86rem;
+  color: var(--ink-muted);
+}
+
+
+/* ---------------- Teacher Analytics Flowchart & Donut Chart ---------------- */
+.pipeline-flowchart {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  overflow-x: auto;
+  padding: 6px 2px;
+}
+.flow-node {
+  flex: 1 1 140px;
+  min-width: 130px;
+  padding: 14px 12px;
+  border-radius: 12px;
+  border: 1px solid var(--line-strong);
+  background: var(--surface-tint);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  gap: 3px;
+}
+.flow-node strong {
+  font-size: 1.25rem;
+  font-weight: 800;
+  color: var(--ink);
+}
+.flow-node small {
+  font-size: 0.74rem;
+  color: var(--ink-muted);
+}
+.flow-step {
+  font-size: 0.7rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+.flow-blue { border-top: 3px solid #3b82f6; }
+.flow-blue .flow-step { color: #2563eb; }
+.flow-teal { border-top: 3px solid #14b8a6; }
+.flow-teal .flow-step { color: #0d9488; }
+.flow-amber { border-top: 3px solid #f59e0b; }
+.flow-amber .flow-step { color: #d97706; }
+.flow-green { border-top: 3px solid #10b981; }
+.flow-green .flow-step { color: #059669; }
+.flow-purple { border-top: 3px solid #8b5cf6; }
+.flow-purple .flow-step { color: #7c3aed; }
+
+.flow-branch {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  flex: 1 1 155px;
+}
+.flow-branch .flow-node {
+  min-width: 145px;
+  padding: 10px 12px;
+}
+.flow-arrow {
+  color: var(--ink-muted);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.donut-wrap {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  flex-wrap: wrap;
+}
+.donut-pct {
+  font-size: 1.15rem;
+  font-weight: 800;
+  fill: var(--ink);
+}
+.donut-lbl {
+  font-size: 0.62rem;
+  fill: var(--ink-muted);
+}
+.donut-legend {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  font-size: 0.86rem;
+}
+.donut-legend li {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.donut-legend .dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  display: inline-block;
+}
+.donut-legend .dot.good { background: #10b981; }
+.donut-legend .dot.warn { background: #f59e0b; }
+.donut-legend .dot.low { background: #ef4444; }

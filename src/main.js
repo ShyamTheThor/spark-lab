@@ -46,6 +46,7 @@ import { onAuth, signOutUser, signInGoogle } from "./auth.js";
 import { isAdmin, refreshAdmin, firebaseConfigured } from "./firebase.js";
 import { setOwner, saveItem, readState, subscribe as subscribeState } from "./features/store.js";
 import { escapeHtml } from "./lib/html.js";
+import { flushOfflineQueue, loadAssignments } from "./features/classroomStore.js";
 import { openAuthModal } from "./authModal.js";
 import { registerSW } from "virtual:pwa-register";
 import {
@@ -179,10 +180,14 @@ app.innerHTML = `
 function updateConnection() {
   const el = document.getElementById("connection-status");
   if (!el) return;
-  const net = navigator.onLine ? t("status.online") : t("status.offline");
+  const online = navigator.onLine;
+  el.classList.toggle("is-offline", !online);
+  el.classList.toggle("is-online", online);
+  const net = online ? `● ${t("status.online")}` : `⚡ ${t("status.offline")} (All 3D Labs & Reports Active)`;
   const off = offlineReady ? t("status.offlineReady") : t(offlineMessageKey);
   const cld = cloudRawMessage || t(cloudMessageKey);
   el.textContent = `${net} · ${off} · ${cld}`;
+  if (online) flushOfflineQueue();
 }
 addEventListener("online", updateConnection);
 addEventListener("offline", updateConnection);
@@ -627,6 +632,30 @@ async function renderHome() {
             <a class="btn primary" href="#/dashboard">${escapeHtml(t("home.openDashboard"))}</a>
           </div>
         </aside>
+      </section>
+
+      <!-- Student Quick Engagement Strip: Daily STEM Spark & Active Class Assignment -->
+      <section class="student-engage-strip" aria-label="Featured STEM Challenge and Class Assignment">
+        ${(() => {
+          const dayIdx = new Date().getDate() % MODULES.length;
+          const featured = MODULES[dayIdx] || MODULES[0];
+          const topAsg = loadAssignments()[0];
+          return `
+            <article class="engage-card engage-spark">
+              <span class="engage-pill">⚡ Today’s 3D STEM Spark</span>
+              <h3>${featured.icon || "🔬"} ${escapeHtml(featured.name)}</h3>
+              <p>${escapeHtml(featured.blurb)}</p>
+              <a class="btn btn-sm primary" href="#/${escapeHtml(featured.id)}">Try Today’s Lab →</a>
+            </article>
+            ${topAsg ? `
+            <article class="engage-card engage-assign">
+              <span class="engage-pill">📚 Class Assignment · Due ${escapeHtml(topAsg.dueDate)}</span>
+              <h3>${escapeHtml(topAsg.title)}</h3>
+              <p>${escapeHtml(topAsg.instructions)}</p>
+              <a class="btn btn-sm" href="#/${escapeHtml(topAsg.moduleId)}">Open Assigned Lab →</a>
+            </article>` : ""}
+          `;
+        })()}
       </section>
 
       <!-- 1. Select your class (AT THE FIRST) -->

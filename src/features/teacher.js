@@ -2,17 +2,37 @@ import { escapeHtml as esc } from "../lib/html.js";
 import { MODULES } from "../modules/index.js";
 import { isAdmin, auth } from "../firebase.js";
 import { openAuthModal } from "../authModal.js";
+import { t } from "../i18n/config.js";
+import {
+  loadAssignments,
+  saveAssignments,
+  loadSubmissions,
+  saveSubmissions,
+  getOfflineQueue,
+  flushOfflineQueue,
+  exportClassroomBundle,
+  importClassroomBundle,
+  exportSubmissionsCSV,
+  getDemoTeacherUser,
+  enableDemoTeacherSession,
+  clearDemoTeacherSession,
+} from "./classroomStore.js";
 
 export const TEACHER_ACCESS_CODE = "SPARK-TEACHER-2026";
 const TEACHER_STORAGE_KEY = "sparklab.teacher.verified.uid";
-const ASSIGNMENTS_KEY = "sparklab.teacher.assignments.v1";
-const SUBMISSIONS_KEY = "sparklab.teacher.submissions.v1";
+
+const CLASS_ROSTERS = {
+  "10-A": { label: "Class 10 - Section A (Physics)", enrolled: 36 },
+  "9-B": { label: "Class 9 - Section B (Science)", enrolled: 35 },
+  "11-A": { label: "Class 11 - Section A (Senior Physics)", enrolled: 32 },
+};
 
 /**
  * Checks if the currently authenticated user is an authorized teacher.
  */
 export function isTeacher(user) {
   if (!user) return false;
+  if (user.isDemo) return true;
   if (isAdmin(user)) return true;
   const verifiedUid = localStorage.getItem(TEACHER_STORAGE_KEY);
   if (verifiedUid && verifiedUid === user.uid) return true;
@@ -45,169 +65,28 @@ export function verifyTeacherCode(user, code) {
 
 export function revokeTeacherAccess() {
   localStorage.removeItem(TEACHER_STORAGE_KEY);
-}
-
-// Default initial assignments for demonstration
-const DEFAULT_ASSIGNMENTS = [
-  {
-    id: "ASG-101",
-    title: "Verify Snell's Law with Crown Glass Prism",
-    moduleId: "refraction",
-    moduleName: "Refraction & Snell's Law",
-    subject: "physics",
-    grade: "10",
-    section: "A",
-    dueDate: "2026-11-25",
-    instructions: "Record 4 different angles of incidence (30°, 45°, 60°, 75°), calculate n = sin(i)/sin(r), and submit the 3D snapshot report.",
-    submissionsCount: 28,
-    totalStudents: 36,
-  },
-  {
-    id: "ASG-102",
-    title: "Simple Pendulum: Length vs Time Period (T² ∝ L)",
-    moduleId: "pendulum",
-    moduleName: "Simple Pendulum",
-    subject: "physics",
-    grade: "9",
-    section: "B",
-    dueDate: "2026-11-28",
-    instructions: "Measure time period T for lengths 0.5m, 1.0m, 1.5m and 2.0m. Export the lab report with your observation table.",
-    submissionsCount: 32,
-    totalStudents: 35,
-  },
-  {
-    id: "ASG-103",
-    title: "Ohm's Law: Resistance Verification",
-    moduleId: "circuit",
-    moduleName: "Ohm's Law Virtual Circuit",
-    subject: "physics",
-    grade: "10",
-    section: "A",
-    dueDate: "2026-12-02",
-    instructions: "Adjust voltage between 2V and 12V. Plot V vs I to calculate effective circuit resistance.",
-    submissionsCount: 14,
-    totalStudents: 36,
-  },
-];
-
-// Default initial student submissions for teacher review
-const DEFAULT_SUBMISSIONS = [
-  {
-    id: "SUB-801",
-    assignmentId: "ASG-101",
-    studentName: "Aarav Sharma",
-    rollNo: "10-A-04",
-    grade: "Class 10 - Section A",
-    moduleName: "Refraction & Snell's Law",
-    submittedAt: "17 Nov 2026, 04:30 PM",
-    snapshotUrl: "",
-    observations: [
-      { name: "Incident Angle (i)", value: "45°" },
-      { name: "Refracted Angle (r)", value: "28.1°" },
-      { name: "Medium 1", value: "Air (n=1.00)" },
-      { name: "Medium 2", value: "Crown Glass (n=1.52)" },
-      { name: "Calculated Ratio sin(i)/sin(r)", value: "1.503" },
-    ],
-    studentConclusion: "Observed that light bends towards the normal when entering glass. Snell's ratio remained constant within 1% experimental tolerance.",
-    quizScore: "3/3 (100%)",
-    status: "Needs Review",
-    gradeScore: "",
-    teacherRemark: "",
-  },
-  {
-    id: "SUB-802",
-    assignmentId: "ASG-102",
-    studentName: "Diya Patel",
-    rollNo: "09-B-12",
-    grade: "Class 9 - Section B",
-    moduleName: "Simple Pendulum",
-    submittedAt: "17 Nov 2026, 06:15 PM",
-    snapshotUrl: "",
-    observations: [
-      { name: "String Length (L)", value: "1.0 m" },
-      { name: "Bob Mass", value: "0.2 kg" },
-      { name: "Initial Angle", value: "10°" },
-      { name: "Measured Period (T)", value: "2.01 s" },
-    ],
-    studentConclusion: "The time period is proportional to the square root of string length and independent of bob mass.",
-    quizScore: "2/2 (100%)",
-    status: "Graded",
-    gradeScore: "A+",
-    teacherRemark: "Excellent observation table and clear scientific conclusion!",
-  },
-  {
-    id: "SUB-803",
-    assignmentId: "ASG-101",
-    studentName: "Rohan Verma",
-    rollNo: "10-A-21",
-    grade: "Class 10 - Section A",
-    moduleName: "Refraction & Snell's Law",
-    submittedAt: "18 Nov 2026, 03:10 AM",
-    observations: [
-      { name: "Incident Angle (i)", value: "60°" },
-      { name: "Refracted Angle (r)", value: "35.2°" },
-      { name: "Medium 1", value: "Air" },
-      { name: "Medium 2", value: "Dense Flint Glass" },
-    ],
-    studentConclusion: "Higher refractive index results in greater deviation toward normal.",
-    quizScore: "2/3 (67%)",
-    status: "Needs Review",
-    gradeScore: "",
-    teacherRemark: "",
-  },
-];
-
-function loadAssignments() {
-  try {
-    const raw = localStorage.getItem(ASSIGNMENTS_KEY);
-    return raw ? JSON.parse(raw) : DEFAULT_ASSIGNMENTS;
-  } catch {
-    return DEFAULT_ASSIGNMENTS;
-  }
-}
-
-function saveAssignments(list) {
-  try {
-    localStorage.setItem(ASSIGNMENTS_KEY, JSON.stringify(list));
-  } catch {}
-}
-
-function loadSubmissions() {
-  try {
-    const raw = localStorage.getItem(SUBMISSIONS_KEY);
-    return raw ? JSON.parse(raw) : DEFAULT_SUBMISSIONS;
-  } catch {
-    return DEFAULT_SUBMISSIONS;
-  }
-}
-
-function saveSubmissions(list) {
-  try {
-    localStorage.setItem(SUBMISSIONS_KEY, JSON.stringify(list));
-  } catch {}
+  clearDemoTeacherSession();
 }
 
 /**
  * Mounts the Teacher's Dashboard or Teacher Authorization Gate.
  */
 export async function mount(root) {
-  const user = auth?.currentUser;
+  const user = auth?.currentUser || getDemoTeacherUser();
 
-  // 1. Access Check: Not a verified teacher
   if (!isTeacher(user)) {
-    renderAccessGate(root, user);
-    return;
+    return renderAccessGate(root, user);
   }
 
-  // 2. Verified Teacher: Render Dashboard
-  renderTeacherPortal(root, user);
+  return renderTeacherPortal(root, user);
 }
 
 /**
  * Renders the Teacher Verification Gate screen.
  */
 function renderAccessGate(root, user) {
-  root.innerHTML = `
+  function drawGate() {
+    root.innerHTML = `
     <div class="teacher-gate-wrap">
       <div class="teacher-gate-card">
         <div class="gate-icon-circle">
@@ -215,20 +94,21 @@ function renderAccessGate(root, user) {
             <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/>
           </svg>
         </div>
-        <span class="gate-eyebrow">Educator & School Administration</span>
-        <h1 class="gate-title">SparkLab Teacher Portal</h1>
-        <p class="gate-subtitle">
-          This portal allows teachers and school instructors to assign 3D virtual experiments, inspect classroom progress, and evaluate student lab reports.
-        </p>
+        <span class="gate-eyebrow">${esc(t("teacher.eyebrow"))}</span>
+        <h1 class="gate-title">${esc(t("teacher.gateTitle"))}</h1>
+        <p class="gate-subtitle">${esc(t("teacher.gateSubtitle"))}</p>
 
         ${
           !user
             ? `
           <div class="gate-prompt-box">
-            <p><strong>Educator Sign In Required</strong></p>
-            <p class="fact">Please sign in with your school Google account or registered educator email.</p>
-            <button class="btn primary" id="gateSignInBtn" type="button" style="width:100%; justify-content:center; margin-top:12px;">
-              Sign In as Teacher
+            <p><strong>${esc(t("teacher.signInRequired"))}</strong></p>
+            <p class="fact">${esc(t("teacher.signInPrompt"))}</p>
+            <button class="btn primary" id="gateSignInBtn" type="button" style="width:100%; justify-content:center; margin-top:10px;">
+              ${esc(t("teacher.signInBtn"))}
+            </button>
+            <button class="btn" id="gateDemoTeacherBtn" type="button" style="width:100%; justify-content:center; margin-top:6px;">
+              🏫 ${esc(t("teacher.demoBtn"))}
             </button>
           </div>
         `
@@ -251,119 +131,216 @@ function renderAccessGate(root, user) {
         }
 
         <div class="gate-footer">
-          <a class="linklike" href="#/">← Back to Student Virtual Lab</a>
+          <a class="linklike" href="#/">← ${esc(t("teacher.backToLab"))}</a>
         </div>
       </div>
     </div>
   `;
 
-  // Wire Sign In
-  root.querySelector("#gateSignInBtn")?.addEventListener("click", () => {
-    openAuthModal(() => mount(root));
-  });
-
-  // Wire Passcode Verification
-  const verifyForm = root.querySelector("#teacherVerifyForm");
-  if (verifyForm) {
-    verifyForm.addEventListener("submit", (e) => {
-      e.preventDefault();
-      const code = root.querySelector("#teacherCodeInput")?.value || "";
-      const result = verifyTeacherCode(user, code);
-      const errEl = root.querySelector("#verifyError");
-      if (result.success) {
-        mount(root);
-      } else {
-        errEl.hidden = false;
-        errEl.textContent = result.error;
-      }
+    root.querySelector("#gateSignInBtn")?.addEventListener("click", () => {
+      openAuthModal(() => mount(root));
     });
+
+    root.querySelector("#gateDemoTeacherBtn")?.addEventListener("click", () => {
+      enableDemoTeacherSession();
+      mount(root);
+    });
+
+    const verifyForm = root.querySelector("#teacherVerifyForm");
+    if (verifyForm) {
+      verifyForm.addEventListener("submit", (e) => {
+        e.preventDefault();
+        const code = root.querySelector("#teacherCodeInput")?.value || "";
+        const result = verifyTeacherCode(user, code);
+        const errEl = root.querySelector("#verifyError");
+        if (result.success) {
+          mount(root);
+        } else {
+          errEl.hidden = false;
+          errEl.textContent = result.error;
+        }
+      });
+    }
   }
+
+  drawGate();
+  const onLang = () => drawGate();
+  document.addEventListener("spark-language", onLang);
+  return () => document.removeEventListener("spark-language", onLang);
+}
+
+function parseQuizPct(sub) {
+  if (typeof sub.quizPct === "number" && !Number.isNaN(sub.quizPct)) return sub.quizPct;
+  const match = String(sub.quizScore || "").match(/(\d+)\s*%/);
+  if (match) return Number(match[1]);
+  const frac = String(sub.quizScore || "").match(/(\d+)\s*\/\s*(\d+)/);
+  if (frac && Number(frac[2]) > 0) return Math.round((Number(frac[1]) / Number(frac[2])) * 100);
+  return null;
+}
+
+function downloadFile(filename, content, mime = "application/json") {
+  const blob = new Blob([content], { type: mime });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
 /**
  * Renders the full Educator & Teacher Portal.
  */
 function renderTeacherPortal(root, user) {
-  let activeTab = "assignments"; // 'assignments' | 'reports' | 'analytics' | 'demo'
+  let activeTab = "assignments"; // 'assignments' | 'reports' | 'roster' | 'analytics' | 'demo'
   let selectedClass = "10-A";
-  let assignments = loadAssignments();
-  let submissions = loadSubmissions();
+  let reportFilter = "all"; // 'all' | 'Needs Review' | 'Graded'
+  let reportSearch = "";
+  let demoSearch = "";
+  let demoSubject = "all";
+  let toastMsg = "";
+
+  function showToast(msg) {
+    toastMsg = msg;
+    paint();
+    setTimeout(() => {
+      if (toastMsg === msg) {
+        toastMsg = "";
+        const banner = root.querySelector("#teacherToast");
+        if (banner) banner.hidden = true;
+      }
+    }, 4000);
+  }
 
   function paint() {
+    const assignments = loadAssignments();
+    const submissions = loadSubmissions();
+    const offlineQueue = getOfflineQueue();
+    const isOnline = typeof navigator !== "undefined" ? navigator.onLine : true;
+
     const teacherName = user?.displayName || (user?.email ? user.email.split("@")[0] : "Educator");
-    const activeAssignments = assignments.filter((a) => !selectedClass || `${a.grade}-${a.section}` === selectedClass);
-    const activeSubmissions = submissions.filter((s) => !selectedClass || s.grade.includes(selectedClass.replace("-", " - Section ")));
-    const pendingReports = submissions.filter((s) => s.status === "Needs Review").length;
+    const activeAssignments = assignments.filter(
+      (a) => !selectedClass || `${a.grade}-${a.section}` === selectedClass
+    );
+    const classPrefix = selectedClass ? selectedClass.replace("-", " - Section ") : "";
+    const classSubmissions = submissions.filter(
+      (s) => !selectedClass || (s.grade || "").includes(classPrefix) || (s.rollNo || "").startsWith(selectedClass)
+    );
+
+    const filteredSubmissions = classSubmissions.filter((s) => {
+      if (reportFilter !== "all" && s.status !== reportFilter) return false;
+      if (reportSearch.trim()) {
+        const q = reportSearch.trim().toLowerCase();
+        return (
+          (s.studentName || "").toLowerCase().includes(q) ||
+          (s.rollNo || "").toLowerCase().includes(q) ||
+          (s.moduleName || "").toLowerCase().includes(q)
+        );
+      }
+      return true;
+    });
+
+    const pendingReports = classSubmissions.filter((s) => s.status === "Needs Review").length;
+    const quizScores = classSubmissions.map(parseQuizPct).filter((v) => v !== null);
+    const avgMastery = quizScores.length
+      ? (quizScores.reduce((a, b) => a + b, 0) / quizScores.length).toFixed(1)
+      : "0.0";
+
+    const enrolledCount = selectedClass
+      ? CLASS_ROSTERS[selectedClass]?.enrolled || 36
+      : Object.values(CLASS_ROSTERS).reduce((sum, r) => sum + r.enrolled, 0);
 
     root.innerHTML = `
       <div class="teacher-portal-view">
-        <!-- Top Teacher Navigation Bar -->
         <header class="teacher-topbar">
           <div class="teacher-brand">
-            <span class="teacher-badge">Verified Educator Portal</span>
-            <h1>Welcome, Prof. ${esc(teacherName)}</h1>
-            <p class="teacher-subtitle">Kendriya Vidyalaya / Central STEM Faculty · Academic Session 2026–27</p>
+            <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
+              <span class="teacher-badge">${esc(t("teacher.badge"))}</span>
+              <span class="offline-status-pill ${isOnline ? "is-online" : "is-offline"}">
+                ${isOnline ? `● ${esc(t("teacher.online"))}` : `⚡ ${esc(t("teacher.offlineMode"))}`} · ${
+                  offlineQueue.length > 0 ? `${offlineQueue.length} queued` : esc(t("teacher.localReady"))
+                }
+              </span>
+            </div>
+            <h1>${esc(t("teacher.welcome"))}, ${esc(teacherName)}</h1>
+            <p class="teacher-subtitle">${esc(t("teacher.subtitle"))}</p>
           </div>
           <div class="teacher-top-actions">
-            <select class="class-selector-dropdown" id="classSelector">
+            <select class="class-selector-dropdown" id="classSelector" aria-label="Select class">
               <option value="10-A" ${selectedClass === "10-A" ? "selected" : ""}>Class 10 - Section A (Physics)</option>
               <option value="9-B" ${selectedClass === "9-B" ? "selected" : ""}>Class 9 - Section B (Science)</option>
               <option value="11-A" ${selectedClass === "11-A" ? "selected" : ""}>Class 11 - Section A (Senior Physics)</option>
               <option value="" ${!selectedClass ? "selected" : ""}>All Classes (Master Roster)</option>
             </select>
-            <button class="btn btn-sm secondary" id="newAssignmentBtn" type="button">➕ New Assignment</button>
-            <button class="btn btn-sm" id="exitTeacherBtn" type="button" title="Switch to student view">Student View</button>
+            <button class="btn btn-sm primary" id="newAssignmentBtn" type="button">➕ ${esc(t("teacher.newAssignment"))}</button>
+            <button class="btn btn-sm" id="exportPackBtn" type="button" title="Export offline classroom pack">📦 ${esc(t("teacher.exportPack"))}</button>
+            <label class="btn btn-sm" title="Import student submissions or class pack offline">
+              📥 ${esc(t("teacher.importPack"))}
+              <input type="file" id="importPackInput" accept="application/json" hidden />
+            </label>
+            <button class="btn btn-sm" id="exitTeacherBtn" type="button" title="Switch to student view">← ${esc(t("teacher.studentLab"))}</button>
+            <button class="btn btn-sm" id="logoutTeacherBtn" type="button" title="Log out of Teacher Portal / Exit Demo Mode">🚪 ${user?.isDemo ? esc(t("teacher.exitDemo")) : esc(t("teacher.logOut"))}</button>
           </div>
         </header>
 
-        <!-- Summary Metric Cards -->
+        <div id="teacherToast" class="teacher-toast" ${toastMsg ? "" : "hidden"} role="status">${esc(toastMsg)}</div>
+
         <div class="teacher-stats-grid">
           <article class="stat-card">
-            <div class="stat-meta">Total Enrolled Students</div>
-            <div class="stat-val">36</div>
-            <div class="stat-hint">Class 10 - Section A Active Roster</div>
+            <div class="stat-meta">${esc(t("teacher.enrolledStudents"))}</div>
+            <div class="stat-val">${enrolledCount}</div>
+            <div class="stat-hint">${esc(selectedClass ? CLASS_ROSTERS[selectedClass]?.label : "All active sections")}</div>
           </article>
           <article class="stat-card">
-            <div class="stat-meta">Active Lab Assignments</div>
-            <div class="stat-val">${assignments.length}</div>
-            <div class="stat-hint">Across physics, chemistry, biology</div>
+            <div class="stat-meta">${esc(t("teacher.activeAssignments"))}</div>
+            <div class="stat-val">${activeAssignments.length}</div>
+            <div class="stat-hint">${assignments.length} total across school</div>
           </article>
           <article class="stat-card">
-            <div class="stat-meta">Pending Lab Reports</div>
+            <div class="stat-meta">${esc(t("teacher.pendingReports"))}</div>
             <div class="stat-val ${pendingReports > 0 ? "highlight-val" : ""}">${pendingReports}</div>
-            <div class="stat-hint">${pendingReports > 0 ? "Awaiting teacher review & grade" : "All reports evaluated ✓"}</div>
+            <div class="stat-hint">${pendingReports > 0 ? esc(t("teacher.awaitingReview")) : `${esc(t("teacher.allEvaluated"))} ✓`}</div>
           </article>
           <article class="stat-card">
-            <div class="stat-meta">Average Quiz & Lab Mastery</div>
-            <div class="stat-val">87.4%</div>
-            <div class="stat-hint">↑ 4.2% higher than state average</div>
+            <div class="stat-meta">${esc(t("teacher.avgMastery"))}</div>
+            <div class="stat-val">${avgMastery}%</div>
+            <div class="stat-hint">Based on ${classSubmissions.length} submitted lab reports</div>
           </article>
         </div>
 
-        <!-- Portal Tabs Navigation -->
         <nav class="teacher-tabs-nav" role="tablist">
           <button class="teacher-tab ${activeTab === "assignments" ? "active" : ""}" data-tab="assignments" type="button">
-            📋 Class Assignments (${activeAssignments.length})
+            📋 ${esc(t("teacher.tabAssignments"))} (${activeAssignments.length})
           </button>
           <button class="teacher-tab ${activeTab === "reports" ? "active" : ""}" data-tab="reports" type="button">
-            📑 Student Lab Reports (${submissions.length})
+            📑 ${esc(t("teacher.tabReports"))} (${classSubmissions.length})
+          </button>
+          <button class="teacher-tab ${activeTab === "roster" ? "active" : ""}" data-tab="roster" type="button">
+            👥 ${esc(t("teacher.tabRoster"))}
           </button>
           <button class="teacher-tab ${activeTab === "analytics" ? "active" : ""}" data-tab="analytics" type="button">
-            📊 Topic Mastery Analytics
+            📊 ${esc(t("teacher.tabAnalytics"))}
           </button>
           <button class="teacher-tab ${activeTab === "demo" ? "active" : ""}" data-tab="demo" type="button">
-            📽️ Smartboard Projector Mode
+            📽️ ${esc(t("teacher.tabDemo"))} (${MODULES.length})
           </button>
         </nav>
 
-        <!-- Tab Body Content -->
         <div class="teacher-tab-body">
-          ${renderTabContent(activeTab, { activeAssignments, submissions, selectedClass })}
+          ${renderTabContent(activeTab, {
+            activeAssignments,
+            classSubmissions,
+            filteredSubmissions,
+            reportFilter,
+            reportSearch,
+            demoSearch,
+            demoSubject,
+          })}
         </div>
       </div>
     `;
 
-    // Event Wire: Tab switching
+    // Tab switching
     root.querySelectorAll(".teacher-tab").forEach((btn) => {
       btn.addEventListener("click", () => {
         activeTab = btn.dataset.tab;
@@ -371,69 +348,161 @@ function renderTeacherPortal(root, user) {
       });
     });
 
-    // Event Wire: Class dropdown
+    // Class dropdown
     root.querySelector("#classSelector")?.addEventListener("change", (e) => {
       selectedClass = e.target.value;
       paint();
     });
 
-    // Event Wire: New Assignment Modal
+    // New Assignment Modal
     root.querySelector("#newAssignmentBtn")?.addEventListener("click", () => {
       openNewAssignmentModal((newAsg) => {
-        assignments.unshift(newAsg);
-        saveAssignments(assignments);
-        paint();
+        const list = loadAssignments();
+        list.unshift(newAsg);
+        saveAssignments(list);
+        showToast(`✓ Dispatched "${newAsg.title}" to Class ${newAsg.grade}-${newAsg.section}`);
       });
     });
 
-    // Event Wire: Exit / Student View
+    // Export / Import Offline Classroom Pack
+    root.querySelector("#exportPackBtn")?.addEventListener("click", () => {
+      const bundle = exportClassroomBundle();
+      downloadFile(`sparklab-classroom-pack-${new Date().toISOString().slice(0, 10)}.json`, JSON.stringify(bundle, null, 2));
+      showToast("📦 Exported offline Classroom Pack (.json)");
+    });
+
+    root.querySelector("#importPackInput")?.addEventListener("change", async (e) => {
+      const file = e.target.files?.[0];
+      if (!file) return;
+      try {
+        const data = JSON.parse(await file.text());
+        const { addedAsg, addedSub } = importClassroomBundle(data);
+        showToast(`📥 Imported ${addedAsg} assignments & ${addedSub} student submissions.`);
+      } catch (err) {
+        showToast(`⚠️ Import failed: ${err.message}`);
+      }
+    });
+
+    // Back to Student Lab
     root.querySelector("#exitTeacherBtn")?.addEventListener("click", () => {
       location.hash = "#/lab";
     });
 
-    // Event Wire: Delete Assignment
-    root.querySelectorAll(".delete-asg-btn").forEach((btn) => {
-      btn.addEventListener("click", () => {
-        const id = btn.dataset.id;
-        assignments = assignments.filter((a) => a.id !== id);
-        saveAssignments(assignments);
-        paint();
+    // Log Out / Exit Demo Teacher Session
+    root.querySelector("#logoutTeacherBtn")?.addEventListener("click", () => {
+      revokeTeacherAccess();
+      mount(root);
+    });
+
+    // Copy Assignment Link
+    root.querySelectorAll(".copy-link-btn").forEach((btn) => {
+      btn.addEventListener("click", async () => {
+        const modId = btn.dataset.module;
+        const asgId = btn.dataset.id;
+        const url = new URL(`#/${modId}?assign=${asgId}`, location.href).href;
+        try {
+          await navigator.clipboard.writeText(url);
+          btn.textContent = `✓ ${t("teacher.copied")}`;
+          setTimeout(() => (btn.textContent = `🔗 ${t("teacher.copyLink")}`), 2000);
+        } catch {
+          showToast(`Share link: ${url}`);
+        }
       });
     });
 
-    // Event Wire: Review Lab Report Modal
+    // Delete Assignment
+    root.querySelectorAll(".delete-asg-btn").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        const id = btn.dataset.id;
+        const next = loadAssignments().filter((a) => a.id !== id);
+        saveAssignments(next);
+        showToast("Assignment removed.");
+      });
+    });
+
+    // Report filters & CSV export
+    root.querySelector("#reportFilterSelect")?.addEventListener("change", (e) => {
+      reportFilter = e.target.value;
+      paint();
+    });
+    root.querySelector("#reportSearchInput")?.addEventListener("input", (e) => {
+      reportSearch = e.target.value;
+      paint();
+    });
+    root.querySelector("#exportCsvBtn")?.addEventListener("click", () => {
+      const csv = exportSubmissionsCSV(classSubmissions);
+      downloadFile(`sparklab-gradebook-${selectedClass || "all"}.csv`, csv, "text/csv;charset=utf-8");
+      showToast("📊 Exported Gradebook CSV");
+    });
+
+    // Review Lab Report Modal
     root.querySelectorAll(".review-sub-btn").forEach((btn) => {
       btn.addEventListener("click", () => {
         const id = btn.dataset.id;
-        const sub = submissions.find((s) => s.id === id);
+        const allSubs = loadSubmissions();
+        const sub = allSubs.find((s) => s.id === id);
         if (sub) {
           openReviewModal(sub, (updated) => {
-            const idx = submissions.findIndex((s) => s.id === id);
+            const idx = allSubs.findIndex((s) => s.id === id);
             if (idx >= 0) {
-              submissions[idx] = updated;
-              saveSubmissions(submissions);
-              paint();
+              allSubs[idx] = updated;
+              saveSubmissions(allSubs);
+              showToast(`✓ Graded ${updated.studentName}'s report (${updated.gradeScore})`);
             }
           });
         }
       });
     });
+
+    // Smartboard Demo search & filter
+    root.querySelector("#demoSearchInput")?.addEventListener("input", (e) => {
+      demoSearch = e.target.value;
+      paint();
+    });
+    root.querySelector("#demoSubjectSelect")?.addEventListener("change", (e) => {
+      demoSubject = e.target.value;
+      paint();
+    });
   }
 
+  const onOnline = () => {
+    flushOfflineQueue();
+    paint();
+  };
+  const onClassroomUpdate = () => paint();
+  addEventListener("online", onOnline);
+  addEventListener("offline", paint);
+  addEventListener("spark-classroom-update", onClassroomUpdate);
+  document.addEventListener("spark-language", onClassroomUpdate);
+
   paint();
+
+  return () => {
+    removeEventListener("online", onOnline);
+    removeEventListener("offline", paint);
+    removeEventListener("spark-classroom-update", onClassroomUpdate);
+    document.removeEventListener("spark-language", onClassroomUpdate);
+  };
 }
 
-/**
- * Returns HTML for the active tab.
- */
-function renderTabContent(tab, { activeAssignments, submissions, selectedClass }) {
+function renderTabContent(tab, ctx) {
+  const {
+    activeAssignments,
+    classSubmissions,
+    filteredSubmissions,
+    reportFilter,
+    reportSearch,
+    demoSearch,
+    demoSubject,
+  } = ctx;
+
   if (tab === "assignments") {
     return `
       <div class="tab-section">
         <div class="tab-header-row">
           <div>
-            <h2>Active Classroom Assignments</h2>
-            <p class="fact">Curriculum experiments assigned to students with real-time submission tracking.</p>
+            <h2>${esc(t("teacher.assignmentsHeading"))}</h2>
+            <p class="fact">${esc(t("teacher.assignmentsSub"))}</p>
           </div>
         </div>
 
@@ -441,19 +510,19 @@ function renderTabContent(tab, { activeAssignments, submissions, selectedClass }
           <table class="teacher-table">
             <thead>
               <tr>
-                <th>Assignment Title</th>
-                <th>Target 3D Lab</th>
-                <th>Class & Section</th>
-                <th>Due Date</th>
-                <th>Submissions</th>
-                <th>Student Link</th>
-                <th>Action</th>
+                <th>${esc(t("teacher.colTitle"))}</th>
+                <th>${esc(t("teacher.colLab"))}</th>
+                <th>${esc(t("teacher.colClass"))}</th>
+                <th>${esc(t("teacher.colDue"))}</th>
+                <th>${esc(t("teacher.colSubmissions"))}</th>
+                <th>${esc(t("teacher.colLink"))}</th>
+                <th>${esc(t("teacher.colAction"))}</th>
               </tr>
             </thead>
             <tbody>
               ${
                 activeAssignments.length === 0
-                  ? `<tr><td colspan="7" style="text-align:center; padding:24px;">No assignments found for this class filter. Click "+ New Assignment" above to dispatch one.</td></tr>`
+                  ? `<tr><td colspan="7" style="text-align:center; padding:24px;">No assignments found for this class filter. Click "➕ New Assignment" above to dispatch one.</td></tr>`
                   : activeAssignments
                       .map(
                         (a) => `
@@ -468,15 +537,13 @@ function renderTabContent(tab, { activeAssignments, submissions, selectedClass }
                   <td>
                     <div class="table-progress-box">
                       <span>${a.submissionsCount} / ${a.totalStudents} (${Math.round(
-                          (a.submissionsCount / a.totalStudents) * 100
+                          (a.submissionsCount / Math.max(1, a.totalStudents)) * 100
                         )}%)</span>
-                      <progress max="${a.totalStudents}" value="${a.submissionsCount}"></progress>
+                      <progress max="${Math.max(1, a.totalStudents)}" value="${a.submissionsCount}"></progress>
                     </div>
                   </td>
                   <td>
-                    <button class="btn btn-xs copy-link-btn" type="button" onclick="navigator.clipboard.writeText(location.origin + '/#/' + '${esc(
-                      a.moduleId
-                    )}?assign=' + '${esc(a.id)}'); alert('Copied student link to clipboard!')">🔗 Copy Link</button>
+                    <button class="btn btn-xs copy-link-btn" data-module="${esc(a.moduleId)}" data-id="${esc(a.id)}" type="button">🔗 ${esc(t("teacher.copyLink"))}</button>
                   </td>
                   <td>
                     <button class="btn btn-xs delete-asg-btn" data-id="${esc(a.id)}" type="button" title="Delete assignment">🗑️</button>
@@ -496,10 +563,19 @@ function renderTabContent(tab, { activeAssignments, submissions, selectedClass }
   if (tab === "reports") {
     return `
       <div class="tab-section">
-        <div class="tab-header-row">
+        <div class="tab-header-row" style="display:flex; justify-content:space-between; align-items:flex-end; gap:12px; flex-wrap:wrap;">
           <div>
-            <h2>Submitted Virtual Lab Reports</h2>
-            <p class="fact">Inspect student 3D apparatus snapshots, parameter measurements, and theoretical findings.</p>
+            <h2>${esc(t("teacher.reportsHeading"))}</h2>
+            <p class="fact">${esc(t("teacher.reportsSub"))}</p>
+          </div>
+          <div style="display:flex; gap:8px; flex-wrap:wrap; align-items:center;">
+            <input type="search" id="reportSearchInput" class="text-input" style="max-width:220px;" placeholder="Search student or lab..." value="${esc(reportSearch)}" />
+            <select id="reportFilterSelect" class="class-selector-dropdown">
+              <option value="all" ${reportFilter === "all" ? "selected" : ""}>All Statuses</option>
+              <option value="Needs Review" ${reportFilter === "Needs Review" ? "selected" : ""}>Needs Review</option>
+              <option value="Graded" ${reportFilter === "Graded" ? "selected" : ""}>Graded</option>
+            </select>
+            <button class="btn btn-sm" id="exportCsvBtn" type="button">📊 ${esc(t("teacher.exportCsv"))}</button>
           </div>
         </div>
 
@@ -507,23 +583,26 @@ function renderTabContent(tab, { activeAssignments, submissions, selectedClass }
           <table class="teacher-table">
             <thead>
               <tr>
-                <th>Student & Roll No.</th>
+                <th>${esc(t("teacher.colStudent"))}</th>
                 <th>Class</th>
-                <th>Experiment</th>
-                <th>Submitted On</th>
-                <th>Quiz Score</th>
-                <th>Review Status</th>
-                <th>Action</th>
+                <th>${esc(t("teacher.colExperiment"))}</th>
+                <th>${esc(t("teacher.colSubmittedOn"))}</th>
+                <th>${esc(t("teacher.colQuizScore"))}</th>
+                <th>${esc(t("teacher.colStatus"))}</th>
+                <th>${esc(t("teacher.colAction"))}</th>
               </tr>
             </thead>
             <tbody>
-              ${submissions
-                .map(
-                  (s) => `
+              ${
+                filteredSubmissions.length === 0
+                  ? `<tr><td colspan="7" style="text-align:center; padding:24px;">No matching lab reports found. Students can submit reports directly from any 3D Lab!</td></tr>`
+                  : filteredSubmissions
+                      .map(
+                        (s) => `
                 <tr>
                   <td>
                     <b>${esc(s.studentName)}</b>
-                    <div class="table-subtext">Roll No: ${esc(s.rollNo)}</div>
+                    <div class="table-subtext">Roll No: ${esc(s.rollNo)} ${s.offlineSaved ? "· ⚡ Offline Synced" : ""}</div>
                   </td>
                   <td>${esc(s.grade)}</td>
                   <td><b>${esc(s.moduleName)}</b></td>
@@ -536,13 +615,89 @@ function renderTabContent(tab, { activeAssignments, submissions, selectedClass }
                   </td>
                   <td>
                     <button class="btn btn-xs primary review-sub-btn" data-id="${esc(s.id)}" type="button">
-                      📝 Review & Grade
+                      📝 ${s.status === "Graded" ? esc(t("teacher.viewEdit")) : esc(t("teacher.reviewGrade"))}
                     </button>
                   </td>
                 </tr>
               `
-                )
-                .join("")}
+                      )
+                      .join("")
+              }
+            </tbody>
+          </table>
+        </div>
+      </div>
+    `;
+  }
+
+  if (tab === "roster") {
+    const byStudent = new Map();
+    for (const s of classSubmissions) {
+      const key = `${s.studentName}::${s.rollNo}`;
+      const existing = byStudent.get(key) || {
+        studentName: s.studentName,
+        rollNo: s.rollNo,
+        grade: s.grade,
+        reports: 0,
+        graded: 0,
+        scores: [],
+        latestGrade: "—",
+      };
+      existing.reports++;
+      if (s.status === "Graded") {
+        existing.graded++;
+        if (s.gradeScore) existing.latestGrade = s.gradeScore;
+      }
+      const pct = parseQuizPct(s);
+      if (pct !== null) existing.scores.push(pct);
+      byStudent.set(key, existing);
+    }
+    const rosterList = [...byStudent.values()];
+
+    return `
+      <div class="tab-section">
+        <div class="tab-header-row" style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px;">
+          <div>
+            <h2>${esc(t("teacher.rosterHeading"))}</h2>
+            <p class="fact">${esc(t("teacher.rosterSub"))}</p>
+          </div>
+          <button class="btn btn-sm" id="exportCsvBtn" type="button">📊 ${esc(t("teacher.exportCsv"))}</button>
+        </div>
+
+        <div class="assignments-table-wrap">
+          <table class="teacher-table">
+            <thead>
+              <tr>
+                <th>Student Name</th>
+                <th>Roll No.</th>
+                <th>Class</th>
+                <th>Lab Reports</th>
+                <th>Avg Quiz Score</th>
+                <th>Latest Grade</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${
+                rosterList.length === 0
+                  ? `<tr><td colspan="6" style="text-align:center; padding:24px;">No student activity recorded for this class yet.</td></tr>`
+                  : rosterList
+                      .map((st) => {
+                        const avg = st.scores.length
+                          ? `${Math.round(st.scores.reduce((a, b) => a + b, 0) / st.scores.length)}%`
+                          : "—";
+                        return `
+                          <tr>
+                            <td><b>${esc(st.studentName)}</b></td>
+                            <td><code>${esc(st.rollNo)}</code></td>
+                            <td>${esc(st.grade)}</td>
+                            <td>${st.reports} submitted (${st.graded} graded)</td>
+                            <td><code class="val-code">${avg}</code></td>
+                            <td><span class="table-pill">${esc(st.latestGrade)}</span></td>
+                          </tr>
+                        `;
+                      })
+                      .join("")
+              }
             </tbody>
           </table>
         </div>
@@ -551,45 +706,173 @@ function renderTabContent(tab, { activeAssignments, submissions, selectedClass }
   }
 
   if (tab === "analytics") {
+    const byTopic = new Map();
+    for (const s of classSubmissions) {
+      const topic = s.moduleName || "General STEM";
+      const cur = byTopic.get(topic) || { topic, count: 0, scores: [], graded: 0 };
+      cur.count++;
+      if (s.status === "Graded") cur.graded++;
+      const pct = parseQuizPct(s);
+      if (pct !== null) cur.scores.push(pct);
+      byTopic.set(topic, cur);
+    }
+
+    const topicMetrics = [...byTopic.values()].map((t) => ({
+      ...t,
+      avg: t.scores.length ? Math.round(t.scores.reduce((a, b) => a + b, 0) / t.scores.length) : 80,
+    }));
+
+    const highMastery = topicMetrics.filter((t) => t.avg >= 80);
+    const needsAttention = topicMetrics.filter((t) => t.avg < 80);
+
+    // Flowchart pipeline metrics
+    const totalAsg = activeAssignments.length;
+    const totalSub = classSubmissions.length;
+    const pendingSub = classSubmissions.filter((s) => s.status === "Needs Review").length;
+    const gradedSub = classSubmissions.filter((s) => s.status === "Graded").length;
+    const masteredSub = classSubmissions.filter((s) => (parseQuizPct(s) ?? 0) >= 80).length;
+    const pctGraded = totalSub ? Math.round((gradedSub / totalSub) * 100) : 0;
+    const pctMastered = totalSub ? Math.round((masteredSub / totalSub) * 100) : 0;
+
+    // Donut chart segments (circumference = 2 * PI * 42 = 263.89)
+    const C = 263.89;
+    const highCount = highMastery.length;
+    const midCount = topicMetrics.filter((m) => m.avg >= 65 && m.avg < 80).length;
+    const lowCount = topicMetrics.filter((m) => m.avg < 65).length;
+    const totalTopics = Math.max(1, topicMetrics.length);
+    const highLen = (highCount / totalTopics) * C;
+    const midLen = (midCount / totalTopics) * C;
+    const lowLen = (lowCount / totalTopics) * C;
+    const overallAvg = topicMetrics.length
+      ? Math.round(topicMetrics.reduce((s, m) => s + m.avg, 0) / topicMetrics.length)
+      : 0;
+
     return `
       <div class="tab-section">
-        <h2>Curriculum Topic Mastery & Diagnostic Analytics</h2>
-        <p class="fact">Aggregated quiz benchmarks, parameter accuracies, and conceptual misconceptions across 36 students.</p>
+        <h2>${esc(t("teacher.analyticsHeading"))}</h2>
+        <p class="fact">${esc(t("teacher.analyticsSub"))}</p>
+
+        <!-- Visual Student Learning & Evaluation Flowchart -->
+        <div class="analytics-card flowchart-card" style="margin-top:16px;">
+          <h3>🔀 Classroom Lab Pipeline Flowchart</h3>
+          <p class="fact" style="margin-bottom:14px;">End-to-end flow from teacher-dispatched 3D assignments to graded mastery.</p>
+          <div class="pipeline-flowchart" role="img" aria-label="Classroom lab submission and grading flowchart">
+            <div class="flow-node flow-blue">
+              <span class="flow-step">1. Assigned</span>
+              <strong>${totalAsg}</strong>
+              <small>Active 3D Labs</small>
+            </div>
+            <div class="flow-arrow" aria-hidden="true">
+              <svg width="36" height="20" viewBox="0 0 36 20"><path d="M2 10h28m-6-6 6 6-6 6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            </div>
+            <div class="flow-node flow-teal">
+              <span class="flow-step">2. Submitted</span>
+              <strong>${totalSub}</strong>
+              <small>Lab Reports</small>
+            </div>
+            <div class="flow-arrow" aria-hidden="true">
+              <svg width="36" height="20" viewBox="0 0 36 20"><path d="M2 10h28m-6-6 6 6-6 6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            </div>
+            <div class="flow-branch">
+              <div class="flow-node flow-amber">
+                <span class="flow-step">3a. Pending Review</span>
+                <strong>${pendingSub}</strong>
+                <small>Awaiting Grade</small>
+              </div>
+              <div class="flow-node flow-green">
+                <span class="flow-step">3b. Graded</span>
+                <strong>${gradedSub} (${pctGraded}%)</strong>
+                <small>Evaluated</small>
+              </div>
+            </div>
+            <div class="flow-arrow" aria-hidden="true">
+              <svg width="36" height="20" viewBox="0 0 36 20"><path d="M2 10h28m-6-6 6 6-6 6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            </div>
+            <div class="flow-node flow-purple">
+              <span class="flow-step">4. Mastery ≥80%</span>
+              <strong>${masteredSub} (${pctMastered}%)</strong>
+              <small>Quiz & Lab Goal</small>
+            </div>
+          </div>
+        </div>
+
+        <!-- Donut Chart + Topic Mastery Breakdown -->
+        <div class="analytics-row">
+          <div class="analytics-card donut-card">
+            <h3>🎯 Mastery Distribution</h3>
+            <div class="donut-wrap">
+              <svg width="140" height="140" viewBox="0 0 110 110" class="donut-svg" aria-label="Topic mastery distribution chart">
+                <circle cx="55" cy="55" r="42" fill="none" stroke="var(--line)" stroke-width="12" />
+                <circle cx="55" cy="55" r="42" fill="none" stroke="#10b981" stroke-width="12"
+                  stroke-dasharray="${highLen} ${C}" stroke-dashoffset="0" transform="rotate(-90 55 55)" />
+                <circle cx="55" cy="55" r="42" fill="none" stroke="#f59e0b" stroke-width="12"
+                  stroke-dasharray="${midLen} ${C}" stroke-dashoffset="${-highLen}" transform="rotate(-90 55 55)" />
+                <circle cx="55" cy="55" r="42" fill="none" stroke="#ef4444" stroke-width="12"
+                  stroke-dasharray="${lowLen} ${C}" stroke-dashoffset="${-(highLen + midLen)}" transform="rotate(-90 55 55)" />
+                <text x="55" y="52" text-anchor="middle" class="donut-pct">${overallAvg}%</text>
+                <text x="55" y="66" text-anchor="middle" class="donut-lbl">Avg Score</text>
+              </svg>
+              <ul class="donut-legend">
+                <li><span class="dot good"></span> High Mastery (≥80%): <b>${highCount}</b></li>
+                <li><span class="dot warn"></span> Developing (65–79%): <b>${midCount}</b></li>
+                <li><span class="dot low"></span> Needs Revision (&lt;65%): <b>${lowCount}</b></li>
+              </ul>
+            </div>
+          </div>
+        </div>
+
+        <div class="analytics-card" style="margin-top:16px;">
+          <h3>📈 Mastery by Experiment Topic</h3>
+          <div class="mastery-bars">
+            ${
+              topicMetrics.length === 0
+                ? `<p class="fact">Submit or import lab reports to generate live topic analytics.</p>`
+                : topicMetrics
+                    .map(
+                      (m) => `
+                <div class="mastery-bar-row">
+                  <div class="mastery-bar-label">
+                    <span><b>${esc(m.topic)}</b> (${m.count} reports)</span>
+                    <span><b>${m.avg}%</b></span>
+                  </div>
+                  <div class="mastery-track">
+                    <div class="mastery-fill ${m.avg >= 80 ? "good" : m.avg >= 65 ? "warn" : "low"}" style="width:${m.avg}%"></div>
+                  </div>
+                </div>
+              `
+                    )
+                    .join("")
+            }
+          </div>
+        </div>
 
         <div class="analytics-row">
           <div class="analytics-card">
-            <h3>🌟 High Mastery Topics (>80%)</h3>
+            <h3>🌟 High Mastery Topics (≥80%)</h3>
             <ul class="analytics-list">
-              <li>
-                <span>Simple Pendulum (Oscillations & Gravity)</span>
-                <b>94% Mastery</b>
-              </li>
-              <li>
-                <span>Ohm's Law & Circuit Resistances</span>
-                <b>88% Mastery</b>
-              </li>
-              <li>
-                <span>Reflection in Plane & Curved Mirrors</span>
-                <b>85% Mastery</b>
-              </li>
+              ${
+                highMastery.length
+                  ? highMastery
+                      .map((m) => `<li><span>${esc(m.topic)}</span><b>${m.avg}% Mastery</b></li>`)
+                      .join("")
+                  : `<li><span>Simple Pendulum (Baseline)</span><b>94% Mastery</b></li>`
+              }
             </ul>
           </div>
 
           <div class="analytics-card">
-            <h3>⚠️ Topics Needing Revision & Intervention</h3>
+            <h3>⚠️ Topics Needing Revision (&lt;80%)</h3>
             <ul class="analytics-list">
-              <li>
-                <span>Refraction & Snell's Law (Relative Indices)</span>
-                <b style="color:var(--bad, #ef4444)">58% (Confusion with critical angle)</b>
-              </li>
-              <li>
-                <span>Electromagnetic Induction (Faraday's Law)</span>
-                <b style="color:var(--bad, #ef4444)">64% (Lenz's rule direction)</b>
-              </li>
-              <li>
-                <span>Calorimetry & Heat Transfer</span>
-                <b style="color:var(--bad, #ef4444)">68% (Specific heat capacity math)</b>
-              </li>
+              ${
+                needsAttention.length
+                  ? needsAttention
+                      .map(
+                        (m) =>
+                          `<li><span>${esc(m.topic)}</span><b style="color:var(--bad, #ef4444)">${m.avg}% · Review Recommended</b></li>`
+                      )
+                      .join("")
+                  : `<li><span>All tracked topics are above 80% mastery ✓</span><b>On Track</b></li>`
+              }
             </ul>
           </div>
         </div>
@@ -598,21 +881,48 @@ function renderTabContent(tab, { activeAssignments, submissions, selectedClass }
   }
 
   if (tab === "demo") {
+    const subjects = [...new Set(MODULES.map((m) => m.subject).filter(Boolean))];
+    const q = demoSearch.trim().toLowerCase();
+    const filteredMods = MODULES.filter((m) => {
+      if (demoSubject !== "all" && m.subject !== demoSubject) return false;
+      if (q) {
+        return (
+          (m.name || "").toLowerCase().includes(q) ||
+          (m.blurb || "").toLowerCase().includes(q) ||
+          (m.subject || "").toLowerCase().includes(q)
+        );
+      }
+      return true;
+    });
+
     return `
       <div class="tab-section">
-        <h2>Smartboard / Classroom Demonstration Launcher</h2>
-        <p class="fact">Launch high-visibility 3D simulations optimized for classroom projectors and interactive smartboards.</p>
+        <div class="tab-header-row" style="display:flex; justify-content:space-between; align-items:flex-end; flex-wrap:wrap; gap:12px;">
+          <div>
+            <h2>${esc(t("teacher.smartboardHeading"))}</h2>
+            <p class="fact">Launch any of the ${MODULES.length} interactive 3D simulations optimized for classroom projectors — works 100% offline.</p>
+          </div>
+          <div style="display:flex; gap:8px; flex-wrap:wrap;">
+            <input type="search" id="demoSearchInput" class="text-input" style="max-width:220px;" placeholder="Search 3D experiments..." value="${esc(demoSearch)}" />
+            <select id="demoSubjectSelect" class="class-selector-dropdown">
+              <option value="all" ${demoSubject === "all" ? "selected" : ""}>All Subjects (${MODULES.length})</option>
+              ${subjects
+                .map((subj) => `<option value="${esc(subj)}" ${demoSubject === subj ? "selected" : ""}>${esc(subj)}</option>`)
+                .join("")}
+            </select>
+          </div>
+        </div>
 
         <div class="demo-launcher-grid">
-          ${MODULES.slice(0, 12)
+          ${filteredMods
             .map(
               (m) => `
             <article class="demo-card">
               <span class="table-pill">${esc((m.subject || "STEM").toUpperCase())}</span>
-              <h3>${esc(m.name)}</h3>
-              <p class="fact">${esc(m.tag || "Core Curriculum")}</p>
-              <div class="btn-row" style="margin-top:10px;">
-                <a class="btn btn-sm primary" href="#/${esc(m.id)}" target="_blank">🚀 Launch Demo</a>
+              <h3>${m.icon ? `${m.icon} ` : ""}${esc(m.name)}</h3>
+              <p class="fact">${esc(m.blurb || m.tag || "Core Curriculum")}</p>
+              <div class="btn-row" style="margin-top:auto; padding-top:8px;">
+                <a class="btn btn-sm primary" href="#/${esc(m.id)}">🚀 ${esc(t("teacher.launchDemo"))}</a>
               </div>
             </article>
           `
@@ -701,18 +1011,22 @@ function openNewAssignmentModal(onSave) {
     e.preventDefault();
     const moduleId = overlay.querySelector("#asgModule").value;
     const mod = MODULES.find((m) => m.id === moduleId);
+    const grade = overlay.querySelector("#asgClass").value;
+    const section = overlay.querySelector("#asgSection").value;
     const newAsg = {
       id: `ASG-${Math.floor(100 + Math.random() * 900)}`,
       title: overlay.querySelector("#asgTitle").value.trim(),
       moduleId,
       moduleName: mod?.name || moduleId,
       subject: mod?.subject || "physics",
-      grade: overlay.querySelector("#asgClass").value,
-      section: overlay.querySelector("#asgSection").value,
+      grade,
+      section,
       dueDate: overlay.querySelector("#asgDueDate").value,
-      instructions: overlay.querySelector("#asgInstructions").value.trim() || "Complete simulation and submit lab report.",
+      instructions:
+        overlay.querySelector("#asgInstructions").value.trim() ||
+        "Complete simulation and submit lab report.",
       submissionsCount: 0,
-      totalStudents: 36,
+      totalStudents: CLASS_ROSTERS[`${grade}-${section}`]?.enrolled || 36,
     };
     onSave(newAsg);
     close();
@@ -736,13 +1050,23 @@ function openReviewModal(sub, onUpdate) {
       </div>
 
       <div class="lab-report-sheet" style="padding: 24px;">
-        <div style="display:flex; justify-content:space-between; margin-bottom:16px;">
+        <div style="display:flex; justify-content:space-between; margin-bottom:16px; flex-wrap:wrap; gap:8px;">
           <div>
             <h3>${esc(sub.moduleName)}</h3>
             <p class="fact">Submitted on ${esc(sub.submittedAt)} · Quiz: <b>${esc(sub.quizScore)}</b></p>
           </div>
           <span class="report-status-pill ${sub.status === "Graded" ? "done" : "active"}">${esc(sub.status)}</span>
         </div>
+
+        ${
+          sub.snapshotUrl
+            ? `
+        <section style="margin-bottom:16px;">
+          <div class="section-tag">3D Apparatus Snapshot</div>
+          <img src="${sub.snapshotUrl}" alt="Student 3D snapshot" style="max-height:240px; width:100%; object-fit:contain; border-radius:8px; border:1px solid var(--line);" />
+        </section>`
+            : ""
+        }
 
         <section style="margin-bottom:16px;">
           <div class="section-tag">Student Measured Parameters</div>
@@ -751,7 +1075,12 @@ function openReviewModal(sub, onUpdate) {
               <tr><th>Parameter</th><th>Recorded Value</th></tr>
             </thead>
             <tbody>
-              ${sub.observations.map((o) => `<tr><td><b>${esc(o.name)}</b></td><td><code class="val-code">${esc(o.value)}</code></td></tr>`).join("")}
+              ${(sub.observations || [])
+                .map(
+                  (o) =>
+                    `<tr><td><b>${esc(o.name)}</b></td><td><code class="val-code">${esc(o.value)}</code></td></tr>`
+                )
+                .join("")}
             </tbody>
           </table>
         </section>
@@ -764,6 +1093,13 @@ function openReviewModal(sub, onUpdate) {
         </section>
 
         <hr class="report-divider" />
+
+        <div class="rubric-chips" style="display:flex; gap:6px; flex-wrap:wrap; margin-bottom:10px;">
+          <button type="button" class="chip rubric-chip" data-grade="A+" data-remark="Outstanding observation table, accurate calculations, and clear scientific conclusion!">🌟 A+ Outstanding</button>
+          <button type="button" class="chip rubric-chip" data-grade="A" data-remark="Well done! Verified parameters and solid experimental understanding.">✓ A Very Good</button>
+          <button type="button" class="chip rubric-chip" data-grade="B+" data-remark="Good effort. Re-check boundary values and include more trials.">📝 B+ Good</button>
+          <button type="button" class="chip rubric-chip" data-grade="Needs Revision" data-remark="Please re-run the 3D simulation and record at least 3 parameter readings.">⚠️ Needs Revision</button>
+        </div>
 
         <form id="evaluationForm" style="display:flex; flex-direction:column; gap:12px;">
           <div style="display:grid; grid-template-columns: 140px 1fr; gap:12px;">
@@ -792,6 +1128,13 @@ function openReviewModal(sub, onUpdate) {
   overlay.onclick = (e) => {
     if (e.target === overlay) close();
   };
+
+  overlay.querySelectorAll(".rubric-chip").forEach((chip) => {
+    chip.onclick = () => {
+      overlay.querySelector("#gradeScore").value = chip.dataset.grade;
+      overlay.querySelector("#teacherRemark").value = chip.dataset.remark;
+    };
+  });
 
   overlay.querySelector("#evaluationForm").onsubmit = (e) => {
     e.preventDefault();

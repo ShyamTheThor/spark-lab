@@ -10,10 +10,36 @@ import {
 import { MODULES } from "../modules/index.js";
 import { INSTRUMENTS } from "../instruments/catalog.js";
 import { getCurriculum } from "../curriculum/data.js";
-import { filterMappings, subjectsForGrade } from "../curriculum/model.js";
+import { filterMappings } from "../curriculum/model.js";
 import { getStudentPrefs } from "../curriculum/preferences.js";
+import { loadAssignments, loadSubmissions } from "./classroomStore.js";
 import { escapeHtml as esc } from "../lib/html.js";
 import { t, tBoard, tClass, tSubject, languages, getLanguage, formatNumber } from "../i18n/config.js";
+
+function computeGamification({ visitedCount, completeCount, quizzesMasteredCount, reportsCount }) {
+  const xp = visitedCount * 15 + completeCount * 50 + quizzesMasteredCount * 100 + reportsCount * 75;
+  const level = Math.floor(xp / 200) + 1;
+  const levelXp = xp % 200;
+  const ranks = [
+    "Lab Apprentice",
+    "Curious Explorer",
+    "Junior Researcher",
+    "Experiment Specialist",
+    "STEM Innovator",
+    "Quantum Scholar",
+  ];
+  const rank = ranks[Math.min(ranks.length - 1, level - 1)];
+
+  const badges = [
+    { id: "first-spark", icon: "⚡", title: "First Spark", desc: "Explore your first 3D lab", unlocked: visitedCount >= 1 },
+    { id: "lab-explorer", icon: "🔭", title: "Lab Explorer", desc: "Explore 5+ STEM labs", unlocked: visitedCount >= 5 },
+    { id: "quiz-master", icon: "🏆", title: "Quiz Master", desc: "Master a module quiz", unlocked: quizzesMasteredCount >= 1 },
+    { id: "report-author", icon: "📄", title: "Report Author", desc: "Submit a 3D lab report", unlocked: reportsCount >= 1 },
+    { id: "offline-scholar", icon: "📡", title: "Offline Ready", desc: "Learn anywhere without internet", unlocked: true },
+  ];
+
+  return { xp, level, levelXp, rank, badges };
+}
 
 export async function mount(root) {
   const data = await getCurriculum();
@@ -44,6 +70,17 @@ export async function mount(root) {
       ([, e]) => e.quizCount && e.quizBest === e.quizCount
     );
 
+    const assignments = loadAssignments();
+    const submissions = loadSubmissions();
+    const gradedReports = submissions.filter((sub) => sub.status === "Graded");
+
+    const gamification = computeGamification({
+      visitedCount: visited.length,
+      completeCount: complete.length,
+      quizzesMasteredCount: quizzesMastered.length,
+      reportsCount: submissions.length,
+    });
+
     const myChapters = filterMappings(data.mappings, {
       board: prefs.board,
       grade: prefs.grade,
@@ -60,10 +97,22 @@ export async function mount(root) {
 
     root.innerHTML = `
       <a class="back-btn" href="#/">← ${esc(t("navigation.home"))}</a>
-      <section class="hero">
-        <span class="eyebrow">${esc(t("dashboard.eyebrow"))}</span>
-        <h1>${esc(t("dashboard.title"))}</h1>
-        <p>${getOwner() === "guest" ? esc(t("dashboard.guestNote")) : esc(t("dashboard.cloudNote"))}</p>
+      <section class="hero student-hero-glow">
+        <div class="student-hero-top">
+          <div>
+            <span class="eyebrow">${esc(t("dashboard.eyebrow"))}</span>
+            <h1>${esc(t("dashboard.title"))}</h1>
+            <p>${getOwner() === "guest" ? esc(t("dashboard.guestNote")) : esc(t("dashboard.cloudNote"))}</p>
+          </div>
+          <div class="xp-rank-card">
+            <div class="xp-level-badge">Level ${gamification.level} · ${esc(gamification.rank)}</div>
+            <div class="xp-total">${formatNumber(gamification.xp)} XP</div>
+            <div class="xp-bar-track" aria-label="XP progress to next level">
+              <div class="xp-bar-fill" style="width:${Math.round((gamification.levelXp / 200) * 100)}%"></div>
+            </div>
+            <small class="fact">${200 - gamification.levelXp} XP to Level ${gamification.level + 1}</small>
+          </div>
+        </div>
         <div class="dashboard-profile-pills">
           <span class="tag">${esc(t("dashboard.selectedBoard"))}: <strong>${esc(tBoard(prefs.board))}</strong></span>
           <span class="tag">${esc(t("dashboard.currentClass"))}: <strong>${esc(tClass(prefs.grade))}</strong></span>
@@ -78,6 +127,75 @@ export async function mount(root) {
         <article><b>${formatNumber(quizzesMastered.length)}</b><span>${esc(t("dashboard.quizzesTaken"))}</span></article>
         <article><b>${formatNumber(saved.length)}</b><span>${esc(t("dashboard.savedViz"))}</span></article>
       </div>
+
+      <section class="achievements-strip" aria-label="Student achievements">
+        <h2>🏅 Achievement Badges</h2>
+        <div class="badges-grid">
+          ${gamification.badges
+            .map(
+              (b) => `
+            <div class="achievement-badge ${b.unlocked ? "unlocked" : "locked"}">
+              <span class="badge-emoji">${b.icon}</span>
+              <div>
+                <strong>${esc(b.title)}</strong>
+                <span>${esc(b.desc)}</span>
+              </div>
+            </div>
+          `
+            )
+            .join("")}
+        </div>
+      </section>
+
+      <section>
+        <h2>📚 Assigned by Your Teacher (${assignments.length})</h2>
+        <div class="bench">
+          ${
+            assignments.length
+              ? assignments
+                  .slice(0, 4)
+                  .map(
+                    (a) => `
+                  <article class="card assignment-student-card">
+                    <span class="tag">Due ${esc(a.dueDate)} · Class ${esc(a.grade)}-${esc(a.section)}</span>
+                    <h3>${esc(a.title)}</h3>
+                    <p>${esc(a.instructions)}</p>
+                    <div class="btn-row" style="margin-top:auto;">
+                      <a class="btn btn-sm primary" href="#/${esc(a.moduleId)}">Start 3D Lab →</a>
+                    </div>
+                  </article>
+                `
+                  )
+                  .join("")
+              : `<p class="fact">No active class assignments yet.</p>`
+          }
+        </div>
+      </section>
+
+      ${
+        gradedReports.length
+          ? `
+      <section>
+        <h2>🎓 Graded Lab Reports & Teacher Feedback</h2>
+        <div class="bench">
+          ${gradedReports
+            .slice(0, 4)
+            .map(
+              (r) => `
+            <article class="card graded-report-card">
+              <span class="report-status-pill done">Grade: ${esc(r.gradeScore || "A")}</span>
+              <h3>${esc(r.moduleName)}</h3>
+              <p class="fact"><b>${esc(r.studentName)}</b> · ${esc(r.submittedAt)}</p>
+              <p>"${esc(r.teacherRemark || "Evaluated by teacher")}"</p>
+            </article>
+          `
+            )
+            .join("")}
+        </div>
+      </section>
+      `
+          : ""
+      }
 
       <div class="dashboard-progress-box">
         <label>
@@ -185,8 +303,10 @@ export async function mount(root) {
   paint();
   const unsub = subscribe(paint);
   document.addEventListener("spark-language", paint);
+  addEventListener("spark-classroom-update", paint);
   return () => {
     unsub();
     document.removeEventListener("spark-language", paint);
+    removeEventListener("spark-classroom-update", paint);
   };
 }

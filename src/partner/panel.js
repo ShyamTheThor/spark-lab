@@ -1,6 +1,7 @@
 import {snapshotExperiment,plain} from './context.js';
 import {getPartnerPrefs} from './preferences.js';
 import {mountVoiceGuide} from './voice.js';
+import {answerOffline} from './offlineAdvisor.js';
 import {t,getLanguage} from '../i18n/config.js';
 import {escapeHtml as esc} from '../lib/html.js';
 export function mountLabPartner(module,panel,host) {
@@ -42,8 +43,17 @@ export function mountLabPartner(module,panel,host) {
   async function ask(question){
     question=question.trim();if(!question||request)return;
     const error=dialog.querySelector('.partner-error');error.textContent='';
-    if(!navigator.onLine){error.textContent=t('partner.offline');return;}
-    const snapshot=context();const controller=new AbortController();request=controller;busy(true);message('user',question);
+    const snapshot=context();
+    if(!navigator.onLine){
+      message('user',question);
+      dialog.querySelector('textarea').value='';
+      const offlineReply=answerOffline({question,module,snapshot,level:getPartnerPrefs().level});
+      lastAnswer=offlineReply;history.push({role:'user',text:question},{role:'model',text:offlineReply});history=history.slice(-8);
+      message('model',offlineReply);
+      busy(false);
+      return;
+    }
+    const controller=new AbortController();request=controller;busy(true);message('user',question);
     dialog.querySelector('textarea').value='';
     const timeout=setTimeout(()=>controller.abort(),35000);
     try {
@@ -54,7 +64,6 @@ export function mountLabPartner(module,panel,host) {
       if(!alive||request!==controller)return;
       lastAnswer=data.answer;history.push({role:'user',text:question},{role:'model',text:data.answer});history=history.slice(-8);
       message('model',data.answer);
-      // An answer describes the captured snapshot; never imply it tracks later controls live.
       const note=document.createElement('small');note.textContent=t('partner.snapshotNote');dialog.querySelector('.partner-messages').append(note);
     } catch(e){if(alive&&request===controller)error.textContent=e.name==='AbortError'?t('partner.cancelled'):e.message;}
     finally {clearTimeout(timeout);if(request===controller){request=null;if(alive)busy(false);}}
@@ -64,7 +73,6 @@ export function mountLabPartner(module,panel,host) {
   dialog.addEventListener('close',()=>floating.focus());
   const language=()=>{if(lastLanguage===getLanguage())return;lastLanguage=getLanguage();request?.abort();request=null;history=[];lastAnswer='';floating.textContent=t('partner.title');drawTools();drawChat();};
   document.addEventListener('spark-language',language);
-  // Sample displayed state at 2 Hz, not every Three.js frame. Requests take a fresh snapshot.
   const timer=setInterval(refresh,500);
   drawTools();drawChat();
   return ()=>{alive=false;request?.abort();clearInterval(timer);voice?.dispose();document.removeEventListener('spark-language',language);dialog.remove();floating.remove();block.remove();};

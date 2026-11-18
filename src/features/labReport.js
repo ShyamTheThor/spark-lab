@@ -1,4 +1,5 @@
 import { escapeHtml } from "../lib/html.js";
+import { getAssignmentsForModule, submitLabReport } from "./classroomStore.js";
 
 /**
  * Procedural camera shutter click using Web Audio API (zero external assets).
@@ -74,7 +75,6 @@ export function extractPanelObservations(panel) {
   // 1. Check controls / labels
   const labels = panel.querySelectorAll("label, .control, .slider-control");
   labels.forEach((lbl) => {
-    // Get label name without the nested input/output values
     const clone = lbl.cloneNode(true);
     clone.querySelectorAll("input, output, select, button, .unit").forEach((n) => n.remove());
     let name = clone.textContent.trim().replace(/[:=]\s*$/, "");
@@ -82,7 +82,6 @@ export function extractPanelObservations(panel) {
       name = lbl.getAttribute("aria-label");
     }
 
-    // Find value
     let val = "";
     const out = lbl.querySelector("output");
     const input = lbl.querySelector("input");
@@ -118,7 +117,6 @@ export function extractPanelObservations(panel) {
     }
   });
 
-  // Default fallback if no inputs/outputs detected
   if (observations.length === 0) {
     observations.push(
       { name: "Simulation Mode", value: "Real-time 3D Interactive" },
@@ -167,10 +165,10 @@ export function openLabReportModal({
 }) {
   closeLabReportModal();
 
-  // If no snapshot provided, take one right now
   const imageSrc = snapshotUrl || viewer?.takeSnapshot?.(module.scene) || "";
   const observations = extractPanelObservations(panel);
   const theory = extractTheoryText(module.lesson);
+  const matchingAssignments = getAssignmentsForModule(module.id);
 
   const reportId = `SL-${new Date().getFullYear()}-${(module.id || "LAB").toUpperCase().slice(0, 4)}-${Math.floor(
     1000 + Math.random() * 9000
@@ -186,8 +184,22 @@ export function openLabReportModal({
   });
 
   const studentName = currentUser?.displayName || (currentUser?.email ? currentUser.email.split("@")[0] : "Student Scholar");
-  const gradeTag = module.tag || "Classes 9–12 STEM";
+  const gradeTag = module.tag || "Class 10 - Section A";
   const defaultObservationNote = `Successfully performed the 3D virtual experiment for "${module.name}". All parameters were recorded and observed to be consistent with theoretical laws.`;
+
+  const quizLabel =
+    quizScore && typeof quizScore === "object" && quizScore.total
+      ? `${quizScore.best}/${quizScore.total} (${Math.round((quizScore.best / quizScore.total) * 100)}%)`
+      : typeof quizScore === "string"
+        ? quizScore
+        : completed
+          ? "Completed"
+          : "In Progress";
+
+  const quizPct =
+    quizScore && typeof quizScore === "object" && quizScore.total
+      ? Math.round((quizScore.best / quizScore.total) * 100)
+      : null;
 
   const overlay = document.createElement("div");
   overlay.className = "modal-overlay lab-report-overlay";
@@ -201,13 +213,15 @@ export function openLabReportModal({
         <div class="report-actions-top">
           <button class="btn btn-sm" id="reportCopyBtn" type="button" title="Copy text summary">📋 Copy Summary</button>
           <button class="btn btn-sm" id="reportDownloadPngBtn" type="button" title="Download snapshot image">📸 Download Snapshot</button>
-          <button class="btn btn-sm primary" id="reportPrintBtn" type="button" title="Print or save as PDF">🖨️ Print / Save PDF</button>
+          <button class="btn btn-sm" id="reportPrintBtn" type="button" title="Print or save as PDF">🖨️ Print / PDF</button>
+          <button class="btn btn-sm primary" id="reportSubmitTeacherBtn" type="button" title="Submit directly to Teacher Portal (works offline)">📤 Submit to Teacher</button>
           <button class="modal-close" id="reportCloseBtn" type="button" aria-label="Close">✕</button>
         </div>
       </div>
 
+      <div id="reportSubmitStatus" class="report-submit-banner" hidden role="status"></div>
+
       <div class="lab-report-sheet" id="labReportSheet">
-        <!-- Header -->
         <header class="report-header">
           <div class="report-brand">
             <svg class="brand-mark" viewBox="0 0 26 26" fill="none" width="28" height="28" aria-hidden="true">
@@ -229,34 +243,36 @@ export function openLabReportModal({
 
         <hr class="report-divider" />
 
-        <!-- Student & Academic Metadata -->
         <section class="report-section student-info-grid">
           <div class="info-cell">
-            <label class="info-label">Student Name</label>
+            <label class="info-label" for="reportStudentName">Student Name</label>
             <input class="report-input-field" id="reportStudentName" value="${escapeHtml(studentName)}" placeholder="Enter your name" />
           </div>
           <div class="info-cell">
-            <label class="info-label">Class & Section</label>
+            <label class="info-label" for="reportRollNo">Roll No. / Student ID</label>
+            <input class="report-input-field" id="reportRollNo" value="10-A-01" placeholder="e.g. 10-A-14" />
+          </div>
+          <div class="info-cell">
+            <label class="info-label" for="reportStudentClass">Class & Section</label>
             <input class="report-input-field" id="reportStudentClass" value="${escapeHtml(gradeTag)}" placeholder="e.g. Class 10 - Section A" />
           </div>
           <div class="info-cell">
-            <label class="info-label">School / Institution</label>
-            <input class="report-input-field" id="reportSchool" value="National Science School" placeholder="Enter school name" />
-          </div>
-          <div class="info-cell">
-            <label class="info-label">Subject & Discipline</label>
-            <div class="report-static-val"><b>${escapeHtml((module.subject || "Science").toUpperCase())}</b> · Virtual Practical</div>
+            <label class="info-label" for="reportAssignmentId">Class Assignment (Optional)</label>
+            <select class="report-input-field" id="reportAssignmentId">
+              <option value="">Independent Practical Submission</option>
+              ${matchingAssignments
+                .map((a) => `<option value="${escapeHtml(a.id)}">${escapeHtml(a.id)}: ${escapeHtml(a.title)}</option>`)
+                .join("")}
+            </select>
           </div>
         </section>
 
-        <!-- Experiment Title -->
         <section class="report-section report-aim">
           <div class="section-tag">Aim of Experiment</div>
           <h2 class="experiment-title" id="reportTitle">${escapeHtml(module.name)}</h2>
           <p class="experiment-theory">${escapeHtml(theory)}</p>
         </section>
 
-        <!-- 3D Snapshot & Setup View -->
         <section class="report-section setup-visual-section">
           <div class="section-tag">Experimental Setup & 3D Apparatus</div>
           <div class="snapshot-frame">
@@ -271,7 +287,6 @@ export function openLabReportModal({
           </div>
         </section>
 
-        <!-- Experimental Parameters Table -->
         <section class="report-section observations-section">
           <div class="section-tag">Experimental Parameters & Recorded Observations</div>
           <table class="report-table">
@@ -296,13 +311,11 @@ export function openLabReportModal({
           </table>
         </section>
 
-        <!-- Observations & Findings Textarea -->
         <section class="report-section findings-section">
           <div class="section-tag">Student Analysis & Conclusion</div>
           <textarea class="report-textarea" id="reportNotes" rows="3" placeholder="Write your hypothesis, observations, and conclusions here...">${escapeHtml(defaultObservationNote)}</textarea>
         </section>
 
-        <!-- Footer / Signatures -->
         <footer class="report-footer">
           <div class="sig-block">
             <div class="sig-line"></div>
@@ -328,25 +341,52 @@ export function openLabReportModal({
   document.body.classList.add("report-modal-open");
   activeReportOverlay = overlay;
 
-  // Wire actions
   overlay.querySelector("#reportCloseBtn").addEventListener("click", closeLabReportModal);
   overlay.addEventListener("click", (e) => {
     if (e.target === overlay) closeLabReportModal();
   });
 
-  // Print
   overlay.querySelector("#reportPrintBtn").addEventListener("click", () => {
     window.print();
   });
 
-  // Download snapshot
   overlay.querySelector("#reportDownloadPngBtn").addEventListener("click", () => {
     if (imageSrc) {
       downloadDataUrl(imageSrc, `SparkLab-${module.id}-snapshot.png`);
     }
   });
 
-  // Copy text summary
+  const submitBtn = overlay.querySelector("#reportSubmitTeacherBtn");
+  const statusBanner = overlay.querySelector("#reportSubmitStatus");
+  submitBtn.addEventListener("click", () => {
+    const sName = overlay.querySelector("#reportStudentName")?.value || studentName;
+    const sRoll = overlay.querySelector("#reportRollNo")?.value || "10-A-01";
+    const sClass = overlay.querySelector("#reportStudentClass")?.value || gradeTag;
+    const asgId = overlay.querySelector("#reportAssignmentId")?.value || "";
+    const notes = overlay.querySelector("#reportNotes")?.value || "";
+
+    const entry = submitLabReport({
+      assignmentId: asgId,
+      studentName: sName,
+      rollNo: sRoll,
+      grade: sClass,
+      moduleId: module.id,
+      moduleName: module.name,
+      snapshotUrl: imageSrc,
+      observations,
+      studentConclusion: notes,
+      quizScore: quizLabel,
+      quizPct,
+    });
+
+    submitBtn.disabled = true;
+    submitBtn.textContent = "✓ Submitted";
+    statusBanner.hidden = false;
+    statusBanner.innerHTML = navigator.onLine
+      ? `<strong>✓ Report ${escapeHtml(entry.id)} submitted to Teacher Portal!</strong> Your teacher can now review your observations and grade it.`
+      : `<strong>⚡ Saved Offline (${escapeHtml(entry.id)})!</strong> Your report is stored locally on this device and queued to sync when you reconnect.`;
+  });
+
   const copyBtn = overlay.querySelector("#reportCopyBtn");
   copyBtn.addEventListener("click", async () => {
     const sName = overlay.querySelector("#reportStudentName")?.value || studentName;
@@ -379,7 +419,6 @@ export function openLabReportModal({
     }
   });
 
-  // Escape key to close
   const onKey = (e) => {
     if (e.key === "Escape") {
       closeLabReportModal();
@@ -395,7 +434,6 @@ export function openLabReportModal({
 export function showSnapshotToast({ stageWrap, dataUrl, module, onOpenReport }) {
   if (!stageWrap || !dataUrl) return;
 
-  // Remove existing toast if any
   stageWrap.querySelectorAll(".snapshot-toast").forEach((t) => t.remove());
 
   const toast = document.createElement("div");
@@ -408,7 +446,7 @@ export function showSnapshotToast({ stageWrap, dataUrl, module, onOpenReport }) 
       <div class="toast-title">📸 3D Snapshot Captured!</div>
       <div class="toast-actions">
         <button class="btn btn-xs primary" id="toastDownloadBtn" type="button">💾 Download PNG</button>
-        <button class="btn btn-xs secondary" id="toastReportBtn" type="button">📄 Export Lab Report</button>
+        <button class="btn btn-xs secondary" id="toastReportBtn" type="button">📄 Export / Submit Report</button>
       </div>
     </div>
     <button class="toast-dismiss" type="button" aria-label="Dismiss">✕</button>
@@ -416,22 +454,18 @@ export function showSnapshotToast({ stageWrap, dataUrl, module, onOpenReport }) 
 
   stageWrap.appendChild(toast);
 
-  // Wire download
   toast.querySelector("#toastDownloadBtn").addEventListener("click", () => {
     downloadDataUrl(dataUrl, `SparkLab-${module.id}-snapshot.png`);
     toast.remove();
   });
 
-  // Wire report
   toast.querySelector("#toastReportBtn").addEventListener("click", () => {
     toast.remove();
     onOpenReport?.();
   });
 
-  // Wire dismiss
   toast.querySelector(".toast-dismiss").addEventListener("click", () => toast.remove());
 
-  // Auto dismiss after 8 seconds
   setTimeout(() => {
     if (toast.isConnected) {
       toast.classList.add("toast-fade-out");
