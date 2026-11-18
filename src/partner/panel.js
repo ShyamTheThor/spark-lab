@@ -4,6 +4,7 @@ import {mountVoiceGuide} from './voice.js';
 import {answerOffline} from './offlineAdvisor.js';
 import {t,getLanguage} from '../i18n/config.js';
 import {escapeHtml as esc} from '../lib/html.js';
+import {getGeminiApiKey, setGeminiApiKey, callGeminiDirect} from './geminiClient.js';
 export function mountLabPartner(module,panel,host) {
   const block=document.createElement('section');block.className='partner-tools';
   panel.after(block);
@@ -57,16 +58,83 @@ export function mountLabPartner(module,panel,host) {
     dialog.querySelector('textarea').value='';
     const timeout=setTimeout(()=>controller.abort(),35000);
     try {
-      const response=await fetch('/api/lab-partner',{method:'POST',headers:{'Content-Type':'application/json'},signal:controller.signal,body:JSON.stringify({question,context:snapshot,level:getPartnerPrefs().level,history:history.slice(-8).map(m=>({...m,text:m.text.slice(0,1200)}))})});
-      let data;try{data=await response.json();}catch{throw new Error(t('partner.unavailable'));}
-      if(!response.ok)throw new Error(data.error||t('partner.unavailable'));
-      if(typeof data.answer!=='string')throw new Error(t('partner.unavailable'));
+      let finalAnswer = null;
+      let usedDirectKey = false;
+      try {
+        const response=await fetch('/api/lab-partner',{method:'POST',headers:{'Content-Type':'application/json'},signal:controller.signal,body:JSON.stringify({question,context:snapshot,level:getPartnerPrefs().level,history:history.slice(-8).map(m=>({...m,text:m.text.slice(0,1200)}))})});
+        let data=null;
+        try { data=await response.json(); } catch {}
+        if(response.ok && typeof data?.answer==='string'){
+          finalAnswer = data.answer;
+        } else if(data && typeof data.error==='string'){
+          throw new Error(data.error);
+        } else {
+          throw new Error('NO_SERVER');
+        }
+      } catch(fetchErr) {
+        if(fetchErr.name==='AbortError') throw fetchErr;
+        if(fetchErr.message!=='NO_SERVER') throw fetchErr;
+
+        const clientKey = getGeminiApiKey();
+        if(clientKey) {
+          usedDirectKey = true;
+          finalAnswer = await callGeminiDirect({
+            question,
+            context: snapshot,
+            level: getPartnerPrefs().level,
+            history,
+            signal: controller.signal,
+            apiKey: clientKey
+          });
+        } else {
+          promptKeyOrOffline(question, snapshot);
+          return;
+        }
+      }
+
       if(!alive||request!==controller)return;
-      lastAnswer=data.answer;history.push({role:'user',text:question},{role:'model',text:data.answer});history=history.slice(-8);
-      message('model',data.answer);
-      const note=document.createElement('small');note.textContent=t('partner.snapshotNote');dialog.querySelector('.partner-messages').append(note);
-    } catch(e){if(alive&&request===controller)error.textContent=e.name==='AbortError'?t('partner.cancelled'):e.message;}
+      lastAnswer=finalAnswer;history.push({role:'user',text:question},{role:'model',text:finalAnswer});history=history.slice(-8);
+      message('model',finalAnswer);
+      const note=document.createElement('small');note.textContent=usedDirectKey ? '⚡ Answered by Gemini AI' : t('partner.snapshotNote');dialog.querySelector('.partner-messages').append(note);
+    } catch(e){
+      if(alive&&request===controller)error.textContent=e.name==='AbortError'?t('partner.cancelled'):e.message;
+    }
     finally {clearTimeout(timeout);if(request===controller){request=null;if(alive)busy(false);}}
+  }
+
+  function promptKeyOrOffline(q, snap) {
+    const error=dialog.querySelector('.partner-error');
+    error.innerHTML=`<div class="partner-key-box" style="border:1px solid currentColor;border-radius:10px;padding:0.75rem;margin-block:0.5rem;background:rgba(15,118,110,0.06);font-size:0.9rem;">
+      <p style="font-weight:600;margin-bottom:0.3rem;">🔑 Live AI API Key Needed for GitHub Pages</p>
+      <p style="margin-bottom:0.5rem;opacity:0.9;">GitHub Pages does not run a backend server. Enter your free Gemini API key to enable live AI, or use the built-in Smart Offline Tutor.</p>
+      <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:0.5rem;">
+        <input type="password" id="p-key-input" placeholder="Paste Gemini API Key (AIzaSy...)" style="flex:1 1 180px;padding:6px;border:1px solid currentColor;border-radius:6px;background:inherit;color:inherit;font-family:monospace;font-size:13px;">
+        <button class="btn primary" type="button" id="p-save-key" style="min-height:32px;padding:4px 12px;font-size:13px;">Save & Ask</button>
+      </div>
+      <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:6px;">
+        <button class="btn" type="button" id="p-use-offline" style="min-height:32px;padding:4px 10px;font-size:13px;">⚡ Answer with Smart Offline Tutor</button>
+        <a href="https://aistudio.google.com/app/apikey" target="_blank" rel="noopener" style="font-size:12px;text-decoration:underline;">Get Free API Key</a>
+      </div>
+    </div>`;
+    error.querySelector('#p-save-key').onclick=()=>{
+      const k=error.querySelector('#p-key-input').value.trim();
+      if(k){
+        setGeminiApiKey(k);
+        error.innerHTML='';
+        ask(q);
+      }
+    };
+    error.querySelector('#p-use-offline').onclick=()=>{
+      error.innerHTML='';
+      const offlineReply=answerOffline({question:q,module,snapshot:snap,level:getPartnerPrefs().level});
+      lastAnswer=offlineReply;history.push({role:'user',text:q},{role:'model',text:offlineReply});history=history.slice(-8);
+      message('model',offlineReply);
+      const note=document.createElement('small');
+      note.textContent='⚡ Answered by Built-in Lab Tutor (add Gemini key in Settings for Live AI)';
+      dialog.querySelector('.partner-messages').append(note);
+      busy(false);
+    };
+    busy(false);
   }
   function open(){if(!dialog.open)dialog.showModal();dialog.querySelector('textarea').focus();}
   floating.onclick=open;
