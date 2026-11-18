@@ -156,6 +156,7 @@ app.innerHTML = `
     <a href="#/formula" data-nav="formula" data-i18n="navigation.formula">Formula Library</a>
     <a href="#/quizzes" data-nav="quizzes" data-i18n="navigation.quizzes">Practice & Quizzes</a>
     <a href="#/dashboard" data-nav="dashboard" data-i18n="navigation.dashboard">My Learning</a>
+    <a href="#/teacher" data-nav="teacher" id="teacher-nav-link" class="teacher-nav-link">Teacher Portal</a>
     <a href="#/curriculum-admin" data-nav="curriculum-admin" data-i18n="navigation.admin" id="curriculum-admin-link" hidden>Curriculum Admin</a>
   </nav>
   <div class="connection-bar" role="status" id="connection-status"></div>
@@ -396,6 +397,7 @@ onAuth(async (user) => {
   const raw = location.hash.replace(/^#\/?/, "");
   document.getElementById("curriculum-admin-link").hidden = !isAdmin(user);
   if (
+    raw === "teacher" ||
     raw === "curriculum-admin" ||
     raw === "submit" ||
     raw === "review" ||
@@ -1334,6 +1336,7 @@ async function renderCommunityInstrument(subId) {
 }
 
 const featureLoaders = {
+  teacher: () => import("./features/teacher.js"),
   curriculum: () => import("./curriculum/view.js"),
   "curriculum-admin": () => import("./curriculum/admin.js"),
   chapter: async () => {
